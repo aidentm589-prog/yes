@@ -118,6 +118,7 @@ def signup():
 def signup_post():
     try:
         user = service.create_user_account(
+            str(request.form.get("first_name") or ""),
             str(request.form.get("email") or ""),
             str(request.form.get("password") or ""),
         )

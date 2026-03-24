@@ -305,6 +305,7 @@ class SQLiteRepository:
     def create_user_account(
         self,
         *,
+        first_name: str,
         email: str,
         password_hash: str,
         role: str,
@@ -321,10 +322,11 @@ class SQLiteRepository:
             cursor = connection.execute(
                 """
                 INSERT INTO user_accounts
-                (email, password_hash, role, tier, credit_balance, has_bulk_access, is_unlimited, created_at, updated_at, last_free_credit_at, last_login_at, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (first_name, email, password_hash, role, tier, credit_balance, has_bulk_access, is_unlimited, created_at, updated_at, last_free_credit_at, last_login_at, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    first_name,
                     email,
                     password_hash,
                     role,
@@ -608,6 +610,7 @@ class SQLiteRepository:
             return None
         return {
             "id": int(row["id"]),
+            "first_name": str(row["first_name"] or ""),
             "email": row["email"],
             "password_hash": row["password_hash"],
             "role": row["role"],

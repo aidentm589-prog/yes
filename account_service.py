@@ -73,8 +73,11 @@ class AccountService:
     def normalize_email(self, email: str) -> str:
         return str(email or "").strip().lower()
 
-    def create_user_account(self, email: str, password: str) -> dict[str, Any]:
+    def create_user_account(self, first_name: str, email: str, password: str) -> dict[str, Any]:
+        first_name = str(first_name or "").strip()
         email = self.normalize_email(email)
+        if len(first_name) < 2:
+            raise ValueError("Enter your first name.")
         if not email or "@" not in email:
             raise ValueError("Enter a valid email address.")
         if len(password or "") < 8:
@@ -85,6 +88,7 @@ class AccountService:
         rule = TIER_RULES[tier]
         last_free_credit_at = _utc_now_iso()
         user_id = self.repository.create_user_account(
+            first_name=first_name,
             email=email,
             password_hash=generate_password_hash(password),
             role="client",
@@ -131,6 +135,7 @@ class AccountService:
             permissions.append("Admin access")
         return {
             "id": user["id"],
+            "first_name": str(user.get("first_name") or ""),
             "email": user["email"],
             "role": user["role"],
             "tier": user["tier"],
@@ -329,6 +334,7 @@ class AccountService:
         password_hash = generate_password_hash(self.test_admin_password)
         if not existing:
             self.repository.create_user_account(
+                first_name="Admin",
                 email=self.test_admin_email,
                 password_hash=password_hash,
                 role="test_admin",

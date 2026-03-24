@@ -16,7 +16,7 @@
     <main class="shell shell-narrow">
       <section class="composer panel full-evaluation-hero">
         <p class="deal-kicker">My Account</p>
-        <h1>{{ auth_user.email }}</h1>
+        <h1>{{ auth_user.first_name or auth_user.email }}</h1>
         <p class="full-evaluation-copy">This is your current tier, credit balance, and testing access for the subscription system.</p>
       </section>
       <section class="panel">

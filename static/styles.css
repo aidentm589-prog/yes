@@ -129,6 +129,35 @@ body::before {
   text-decoration: none;
 }
 
+.account-status-links {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.account-status-links strong a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(116, 196, 255, 0.18);
+  background: rgba(8, 23, 54, 0.28);
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.account-status-links strong a:hover {
+  transform: translateY(-1px);
+  border-color: rgba(116, 196, 255, 0.4);
+  background: rgba(116, 196, 255, 0.12);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.14);
+}
+
 .sticky-portfolio-button {
   position: fixed;
   top: 1.2rem;

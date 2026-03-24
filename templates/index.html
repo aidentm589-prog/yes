@@ -40,7 +40,10 @@
         <strong>{% if account_status.is_unlimited %}Unlimited{% else %}Credits: {{ account_status.credit_balance }}{% endif %}</strong>
       {% else %}
         <span>Account</span>
-        <strong><a href="{{ url_for('login') }}">Log In</a></strong>
+        <div class="account-status-links">
+          <strong><a href="{{ url_for('login') }}">Log In</a></strong>
+          <strong><a href="{{ url_for('signup') }}">Sign Up</a></strong>
+        </div>
       {% endif %}
     </div>
     <a class="sticky-portfolio-button" href="{{ url_for('portfolio') }}">

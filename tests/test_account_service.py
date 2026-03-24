@@ -18,8 +18,9 @@ class AccountServiceTests(unittest.TestCase):
 
     def test_signup_creates_free_tier_account(self) -> None:
         service = self.create_service()
-        user = service.create_user_account("friend@example.com", "password123")
+        user = service.create_user_account("Aiden", "friend@example.com", "password123")
 
+        self.assertEqual(user["first_name"], "Aiden")
         self.assertEqual(user["tier"], 1)
         self.assertEqual(user["credit_balance"], 1)
         self.assertFalse(user["has_bulk_access"])
@@ -27,7 +28,7 @@ class AccountServiceTests(unittest.TestCase):
 
     def test_tier_one_consumes_one_credit_and_blocks_bulk(self) -> None:
         service = self.create_service()
-        user = service.create_user_account("tier1@example.com", "password123")
+        user = service.create_user_account("Tier", "tier1@example.com", "password123")
         payload = {"vehicle_input": "2014 audi a4 105000 miles"}
 
         first = service.authorize_evaluation_start(user["id"], "individual", payload)
@@ -48,7 +49,7 @@ class AccountServiceTests(unittest.TestCase):
 
     def test_free_tier_refills_after_24_hours_without_accumulating(self) -> None:
         service = self.create_service()
-        user = service.create_user_account("refill@example.com", "password123")
+        user = service.create_user_account("Refill", "refill@example.com", "password123")
         service.authorize_evaluation_start(user["id"], "individual", {"vehicle_input": "2014 audi a4 105000 miles"})
 
         old_time = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
@@ -65,7 +66,7 @@ class AccountServiceTests(unittest.TestCase):
 
     def test_higher_tiers_get_expected_credits_and_permissions(self) -> None:
         service = self.create_service()
-        user = service.create_user_account("tiered@example.com", "password123")
+        user = service.create_user_account("Tiered", "tiered@example.com", "password123")
 
         tier2 = service.update_user_tier(user["id"], 2)
         tier3 = service.update_user_tier(user["id"], 3)
@@ -79,7 +80,7 @@ class AccountServiceTests(unittest.TestCase):
 
     def test_bulk_consumes_five_credits_for_paid_tiers(self) -> None:
         service = self.create_service()
-        user = service.create_user_account("bulk@example.com", "password123")
+        user = service.create_user_account("Bulk", "bulk@example.com", "password123")
         service.update_user_tier(user["id"], 2)
 
         decision = service.authorize_evaluation_start(
@@ -95,7 +96,7 @@ class AccountServiceTests(unittest.TestCase):
 
     def test_admin_can_ban_client_account(self) -> None:
         service = self.create_service()
-        user = service.create_user_account("banme@example.com", "password123")
+        user = service.create_user_account("Ban", "banme@example.com", "password123")
 
         updated = service.update_user_status(user["id"], "banned", actor_user_id=999)
 
@@ -104,7 +105,7 @@ class AccountServiceTests(unittest.TestCase):
 
     def test_admin_can_delete_client_account(self) -> None:
         service = self.create_service()
-        user = service.create_user_account("deleteme@example.com", "password123")
+        user = service.create_user_account("Delete", "deleteme@example.com", "password123")
 
         deleted = service.delete_user_account(user["id"], actor_user_id=999)
 
@@ -113,7 +114,7 @@ class AccountServiceTests(unittest.TestCase):
 
     def test_admin_can_grant_and_remove_admin_role(self) -> None:
         service = self.create_service()
-        user = service.create_user_account("partner@example.com", "password123")
+        user = service.create_user_account("Partner", "partner@example.com", "password123")
 
         promoted = service.update_user_role(user["id"], "admin", actor_user_id=999)
         demoted = service.update_user_role(user["id"], "client", actor_user_id=999)

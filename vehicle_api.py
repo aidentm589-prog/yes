@@ -75,9 +75,9 @@ class VehicleValueService:
         except Exception as exc:  # noqa: BLE001
             raise VehicleApiError(str(exc)) from exc
 
-    def create_user_account(self, email: str, password: str) -> dict[str, Any]:
+    def create_user_account(self, first_name: str, email: str, password: str) -> dict[str, Any]:
         try:
-            return self.accounts.create_user_account(email, password)
+            return self.accounts.create_user_account(first_name, email, password)
         except Exception as exc:  # noqa: BLE001
             raise VehicleApiError(str(exc)) from exc
 
