@@ -58,8 +58,8 @@
   <div class="topbar-right">
     <div class="account-status-pill topbar-account-status">
       {% if auth_user %}
-        <span>{{ auth_user.first_name or 'Account' }}</span>
-        <strong><a href="{{ url_for('account') }}">{{ auth_user.first_name or 'Open' }}</a></strong>
+        <span>Account</span>
+        <strong><a href="{{ url_for('account') }}">{{ auth_user.first_name or 'Account' }}</a></strong>
       {% else %}
         <span>Account</span>
         <div class="account-status-links">
@@ -69,7 +69,6 @@
       {% endif %}
     </div>
     <a class="sticky-portfolio-button topbar-action-pill" href="{% if auth_user %}{{ url_for('portfolio') }}{% else %}{{ url_for('login') }}{% endif %}">
-      <span aria-hidden="true">❤️</span>
       <span>Portfolio</span>
     </a>
     <button id="software-chat-button" class="software-chat-button topbar-action-icon" type="button" aria-expanded="false" aria-controls="software-chat-panel" aria-label="Open software assistant">

@@ -107,7 +107,7 @@ function renderAccountStatus(status) {
     : `${Number(status?.credit_balance || 0)}`;
 
   if (accountStatusPill && status) {
-    const accountText = status.first_name || "Open";
+    const accountText = status.first_name || "Account";
     accountStatusPill.innerHTML = `
       <span>Account</span>
       <strong><a href="/account">${escapeHtml(accountText)}</a></strong>
