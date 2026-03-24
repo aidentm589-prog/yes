@@ -64,6 +64,53 @@ class AutoDevAdapterTests(unittest.TestCase):
         self.assertEqual(listing.dealer_name, "Honda of Salem")
         self.assertTrue(listing.image_urls)
 
+    def test_falls_back_to_x_api_key_header_on_auth_error(self) -> None:
+        class StubHttpClient:
+            def __init__(self) -> None:
+                self.calls: list[dict[str, str]] = []
+
+            def register_rate_limiter(self, key: str, min_interval_seconds: float) -> None:
+                return None
+
+            def get_json(self, url: str, *, params=None, headers=None, source_key=""):
+                self.calls.append(headers or {})
+                if headers and headers.get("Authorization"):
+                    raise RuntimeError("GET https://api.auto.dev/listings failed with 401: unauthorized")
+                return {
+                    "data": [
+                        {
+                            "@id": "listing-1",
+                            "vin": "19XFA16509L005583",
+                            "vehicle": {
+                                "year": 2009,
+                                "make": "Honda",
+                                "model": "Civic",
+                                "trim": "LX",
+                            },
+                            "retailListing": {
+                                "miles": 111917,
+                                "price": 6595,
+                            },
+                        }
+                    ]
+                }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = EngineConfig.from_env(Path(temp_dir))
+            config.enable_autodev = True
+            config.autodev_api_key = "test-key"
+            repository = SQLiteRepository(Path(temp_dir) / "comp.db")
+            adapter = AutoDevAdapter(config, StubHttpClient(), repository)
+            query = parse_vehicle_query({"vehicle_input": "2009 honda civic 145000 miles"})
+            listings = adapter.search_listings(query)
+
+        self.assertEqual(len(listings), 1)
+        self.assertGreaterEqual(len(adapter.http_client.calls), 2)
+        self.assertIn("Authorization", adapter.http_client.calls[0])
+        self.assertTrue(
+            any("x-api-key" in call or "X-API-Key" in call for call in adapter.http_client.calls[1:])
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

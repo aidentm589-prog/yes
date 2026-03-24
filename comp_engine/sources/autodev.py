@@ -33,10 +33,6 @@ class AutoDevAdapter(SourceAdapter):
     def search_listings(self, query: VehicleQuery) -> list[dict[str, Any]]:
         if not self.is_enabled():
             return []
-        headers = {
-            "Authorization": f"Bearer {self.config.autodev_api_key}",
-            "Accept": "application/json",
-        }
         params_candidates = [
             {
                 "vehicle.year": query.year,
@@ -63,24 +59,36 @@ class AutoDevAdapter(SourceAdapter):
             },
         ]
         deduped: dict[str, dict[str, Any]] = {}
-        for params in params_candidates:
-            payload = self.http_client.get_json(
-                "https://api.auto.dev/listings",
-                params=params,
-                headers=headers,
-                source_key=self.key,
-            )
-            listings = payload.get("data") or []
-            for listing in listings:
-                if not isinstance(listing, dict):
-                    continue
-                vin = str(listing.get("vin") or listing.get("vehicle", {}).get("vin") or "").strip().upper()
-                listing_id = vin or str(listing.get("@id") or "")
-                if not listing_id:
-                    continue
-                deduped.setdefault(listing_id, listing)
-            if len(deduped) >= 12:
-                break
+        last_error: Exception | None = None
+        for headers in self._auth_header_candidates():
+            try:
+                for params in params_candidates:
+                    payload = self.http_client.get_json(
+                        "https://api.auto.dev/listings",
+                        params=params,
+                        headers=headers,
+                        source_key=self.key,
+                    )
+                    listings = payload.get("data") or []
+                    for listing in listings:
+                        if not isinstance(listing, dict):
+                            continue
+                        vin = str(listing.get("vin") or listing.get("vehicle", {}).get("vin") or "").strip().upper()
+                        listing_id = vin or str(listing.get("@id") or "")
+                        if not listing_id:
+                            continue
+                        deduped.setdefault(listing_id, listing)
+                    if len(deduped) >= 12:
+                        break
+                if deduped:
+                    break
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+                if not self._is_auth_error(exc):
+                    raise
+                continue
+        if not deduped and last_error is not None and self._is_auth_error(last_error):
+            raise last_error
         return list(deduped.values())
 
     def normalize_listing(self, raw: dict[str, Any], query: VehicleQuery) -> NormalizedListing | None:
@@ -148,22 +156,49 @@ class AutoDevAdapter(SourceAdapter):
         health = super().health_check()
         if not self.is_enabled():
             return health
-        try:
-            self.http_client.get_json(
-                "https://api.auto.dev/listings",
-                params={"limit": 1},
-                headers={
-                    "Authorization": f"Bearer {self.config.autodev_api_key}",
-                    "Accept": "application/json",
-                },
-                source_key=self.key,
-            )
-            health["status"] = "ok"
-            health["message"] = "API key validated"
-        except Exception as exc:  # noqa: BLE001
+        last_error: Exception | None = None
+        for headers in self._auth_header_candidates():
+            try:
+                self.http_client.get_json(
+                    "https://api.auto.dev/listings",
+                    params={"limit": 1},
+                    headers=headers,
+                    source_key=self.key,
+                )
+                health["status"] = "ok"
+                health["message"] = "API key validated"
+                return health
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+                if not self._is_auth_error(exc):
+                    health["status"] = "error"
+                    health["message"] = str(exc)
+                    return health
+        if last_error is not None:
             health["status"] = "error"
-            health["message"] = str(exc)
+            health["message"] = str(last_error)
         return health
+
+    def _auth_header_candidates(self) -> list[dict[str, str]]:
+        api_key = self.config.autodev_api_key
+        return [
+            {
+                "Authorization": f"Bearer {api_key}",
+                "Accept": "application/json",
+            },
+            {
+                "x-api-key": api_key,
+                "Accept": "application/json",
+            },
+            {
+                "X-API-Key": api_key,
+                "Accept": "application/json",
+            },
+        ]
+
+    def _is_auth_error(self, exc: Exception) -> bool:
+        message = str(exc).lower()
+        return "401" in message or "403" in message or "unauthorized" in message or "invalid api key" in message
 
     def _listing_url(self, raw: dict[str, Any], vin: str, retail: dict[str, Any]) -> str:
         vdp = str(retail.get("vdp") or "").strip()
