@@ -49,8 +49,7 @@ function renderAccountStatus(status) {
   }
   if (accountStatusPill) {
     accountStatusPill.innerHTML = `
-      <span>Account</span>
-      <strong><a href="/account">${escapeHtml(status.first_name || "Account")}</a></strong>
+      <strong><a href="/account">My Account</a></strong>
     `;
   }
   if (topbarCreditValue) {

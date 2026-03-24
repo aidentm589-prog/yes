@@ -46,10 +46,21 @@
                 <span>Bulk</span>
                 <strong>{{ "Enabled" if tier.has_bulk_access else "Blocked" }}</strong>
               </div>
+              <div>
+                <span>Add-Ons</span>
+                <strong>{{ "Enabled" if tier.has_addon_access else "Blocked" }}</strong>
+              </div>
             </div>
-            <a class="button compact-button" href="{% if auth_user %}{{ url_for('account') }}{% else %}{{ url_for('signup') }}{% endif %}">
-              {% if auth_user %}Manage Access{% else %}Create Account{% endif %}
-            </a>
+            {% if auth_user %}
+              <button type="button" class="button compact-button subscription-select-button" data-tier="{{ tier.tier }}">
+                Manage Access
+              </button>
+            {% else %}
+              <a class="button compact-button" href="{{ url_for('signup') }}">
+                Create Account
+              </a>
+            {% endif %}
+            <div class="subscription-inline-status muted"></div>
           </article>
         {% endfor %}
       </section>

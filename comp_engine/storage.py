@@ -43,12 +43,25 @@ class SQLiteRepository:
             for sql_file in sql_files:
                 if sql_file.name in applied:
                     continue
+                if (
+                    sql_file.name == "008_add_addon_access_to_subscription_tiers.sql"
+                    and self._column_exists(connection, "subscription_tiers", "has_addon_access")
+                ):
+                    connection.execute(
+                        "INSERT INTO schema_migrations (filename, applied_at) VALUES (?, ?)",
+                        (sql_file.name, _utc_now_iso()),
+                    )
+                    continue
                 connection.executescript(sql_file.read_text())
                 connection.execute(
                     "INSERT INTO schema_migrations (filename, applied_at) VALUES (?, ?)",
                     (sql_file.name, _utc_now_iso()),
                 )
             connection.commit()
+
+    def _column_exists(self, connection: sqlite3.Connection, table_name: str, column_name: str) -> bool:
+        rows = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+        return any(str(row["name"]) == column_name for row in rows)
 
     def get_cache_json(self, cache_key: str) -> dict[str, Any] | None:
         with self._lock, self._connect() as connection:
@@ -438,6 +451,7 @@ class SQLiteRepository:
         yearly_price: str,
         marketing_copy: str,
         has_bulk_access: bool,
+        has_addon_access: bool,
         is_unlimited: bool,
     ) -> dict[str, Any]:
         now = _utc_now_iso()
@@ -445,8 +459,8 @@ class SQLiteRepository:
             connection.execute(
                 """
                 INSERT INTO subscription_tiers
-                (tier, display_name, credits_granted, monthly_price, yearly_price, marketing_copy, has_bulk_access, is_unlimited, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (tier, display_name, credits_granted, monthly_price, yearly_price, marketing_copy, has_bulk_access, has_addon_access, is_unlimited, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(tier) DO UPDATE SET
                     display_name = excluded.display_name,
                     credits_granted = excluded.credits_granted,
@@ -454,6 +468,7 @@ class SQLiteRepository:
                     yearly_price = excluded.yearly_price,
                     marketing_copy = excluded.marketing_copy,
                     has_bulk_access = excluded.has_bulk_access,
+                    has_addon_access = excluded.has_addon_access,
                     is_unlimited = excluded.is_unlimited,
                     updated_at = excluded.updated_at
                 """,
@@ -465,6 +480,7 @@ class SQLiteRepository:
                     yearly_price,
                     marketing_copy,
                     1 if has_bulk_access else 0,
+                    1 if has_addon_access else 0,
                     1 if is_unlimited else 0,
                     now,
                     now,
@@ -697,6 +713,7 @@ class SQLiteRepository:
             "yearly_price": str(row["yearly_price"] or ""),
             "marketing_copy": str(row["marketing_copy"] or ""),
             "has_bulk_access": bool(row["has_bulk_access"]),
+            "has_addon_access": bool(row["has_addon_access"]) if "has_addon_access" in row.keys() else False,
             "is_unlimited": bool(row["is_unlimited"]),
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],

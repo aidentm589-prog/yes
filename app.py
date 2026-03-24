@@ -194,7 +194,7 @@ def admin_clients_page():
 @app.get("/admin/subscriptions")
 @admin_required
 def admin_subscriptions_page():
-    return render_template("admin_subscriptions.html", tiers=service.list_subscription_tiers())
+    return redirect(url_for("admin_clients_page"))
 
 
 @app.post("/api/valuation")
@@ -300,6 +300,32 @@ def software_chat():
 def account_status():
     status = service.get_account_status(session.get("user_id"))
     return jsonify({"ok": True, "account_status": status})
+
+
+@app.delete("/api/account")
+@login_required
+def delete_current_account():
+    deleted = service.delete_user_account(current_user()["id"])
+    if not deleted:
+        return jsonify({"ok": False, "message": "Unable to delete account."}), 400
+    session.clear()
+    return jsonify({"ok": True, "message": "Account deleted."})
+
+
+@app.post("/api/account/subscription-select")
+@login_required
+def account_subscription_select():
+    payload = request.get_json(force=True, silent=True) or {}
+    tier = payload.get("tier")
+    if tier is None:
+        return jsonify({"ok": False, "message": "Missing tier."}), 400
+    try:
+        updated = service.update_user_tier(current_user()["id"], int(tier))
+    except VehicleApiError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    if not updated:
+        return jsonify({"ok": False, "message": "Unable to update subscription."}), 400
+    return jsonify({"ok": True, "account_status": updated, "message": f"{updated['tier_label']} is now active on this account."})
 
 
 @app.get("/api/subscriptions")

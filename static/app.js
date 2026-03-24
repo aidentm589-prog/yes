@@ -26,6 +26,7 @@ const fullEvaluationLink = document.getElementById("full-evaluation-link");
 const loadingPanel = document.getElementById("loading-panel");
 const loadingMessage = document.getElementById("loading-message");
 const loadingTitle = document.getElementById("loading-title");
+const loadingKicker = document.getElementById("loading-kicker");
 const resultsStatusPanel = document.getElementById("results-status-panel");
 const resultsGrid = document.getElementById("results-grid");
 const resultsTitleImpactPanel = document.getElementById("results-title-impact-panel");
@@ -107,10 +108,8 @@ function renderAccountStatus(status) {
     : `${Number(status?.credit_balance || 0)}`;
 
   if (accountStatusPill && status) {
-    const accountText = status.first_name || "Account";
     accountStatusPill.innerHTML = `
-      <span>Account</span>
-      <strong><a href="/account">${escapeHtml(accountText)}</a></strong>
+      <strong><a href="/account">My Account</a></strong>
     `;
   }
 
@@ -235,11 +234,24 @@ function setChoiceCardSelection(groupName, value) {
 function syncBulkLockState(status) {
   const bulkCard = evaluationModeCards?.querySelector('[data-value="bulk"]');
   if (!bulkCard) {
+    syncAddonLockState(status);
     return;
   }
   const isLocked = !status || (!status.is_unlimited && !status.has_bulk_access);
   bulkCard.classList.toggle("is-locked", isLocked);
   bulkCard.setAttribute("aria-disabled", isLocked ? "true" : "false");
+  syncAddonLockState(status);
+}
+
+function syncAddonLockState(status) {
+  const addonLocked = !status || (!status.is_unlimited && !status.has_addon_access);
+  if (detailedReportCard) {
+    detailedReportCard.classList.toggle("is-locked", addonLocked);
+    detailedReportCard.setAttribute("aria-disabled", addonLocked ? "true" : "false");
+    if (addonLocked) {
+      detailedReportCard.setAttribute("data-lock-message", "Your subscription level does not qualify for juicy add-ons yet.");
+    }
+  }
 }
 
 function setDisabledForField(container, disabled) {
@@ -289,7 +301,7 @@ function updateEvaluationModeUI() {
   );
 }
 
-function setLoadingVisible(visible, message = "", title = "") {
+function setLoadingVisible(visible, message = "", title = "", kicker = "") {
   if (!loadingPanel) {
     return;
   }
@@ -299,6 +311,9 @@ function setLoadingVisible(visible, message = "", title = "") {
   }
   if (loadingTitle) {
     loadingTitle.textContent = title || "Building comps and pricing";
+  }
+  if (loadingKicker) {
+    loadingKicker.textContent = kicker || "Evaluating the batch";
   }
 }
 
@@ -1380,6 +1395,50 @@ function initBillingToggle() {
   applyBilling("monthly");
 }
 
+function initSubscriptionSelection() {
+  const grid = document.getElementById("subscriptions-grid");
+  if (!grid) {
+    return;
+  }
+  grid.addEventListener("click", async (event) => {
+    const button = event.target.closest(".subscription-select-button");
+    if (!button) {
+      return;
+    }
+    const card = button.closest("[data-tier]");
+    const inlineStatus = card?.querySelector(".subscription-inline-status");
+    const tier = Number(button.dataset.tier || card?.dataset.tier || 0);
+    if (!tier) {
+      return;
+    }
+    button.disabled = true;
+    if (inlineStatus) {
+      inlineStatus.textContent = "Updating access...";
+    }
+    try {
+      const response = await fetch("/api/account/subscription-select", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tier }),
+      });
+      const payload = await response.json();
+      if (!payload.ok) {
+        throw new Error(payload.message || "Unable to update access.");
+      }
+      renderAccountStatus(payload.account_status);
+      if (inlineStatus) {
+        inlineStatus.textContent = payload.message || "Access updated.";
+      }
+    } catch (error) {
+      if (inlineStatus) {
+        inlineStatus.textContent = error instanceof Error ? error.message : "Request failed.";
+      }
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
 async function saveMainEvaluationToPortfolio() {
   if (!currentMainEvaluation) {
     return;
@@ -1456,7 +1515,8 @@ form?.addEventListener("submit", async (event) => {
     bulkMode
       ? "Parsing vehicles, evaluating each one, and ranking the best deals in the batch."
       : "Building comps, checking pricing, and calculating your potential deal.",
-    bulkMode ? "Evaluating the batch" : "Building comps and pricing",
+    bulkMode ? "Ranking the strongest deals" : "Building comps and pricing",
+    bulkMode ? "Evaluating the batch" : "Evaluating the deal",
   );
   startLoadingProgress();
   sessionBadge.textContent = "Running";
@@ -1611,6 +1671,7 @@ if (compSortSelect) {
 }
 
 initBillingToggle();
+initSubscriptionSelection();
 
 favoriteFromMain?.addEventListener("click", saveMainEvaluationToPortfolio);
 evaluationModeCards?.addEventListener("click", (event) => {
@@ -1630,6 +1691,10 @@ evaluationModeCards?.addEventListener("click", (event) => {
 
 detailedReportCard?.addEventListener("click", () => {
   if (!detailedVehicleReportSelect) {
+    return;
+  }
+  if (detailedReportCard.classList.contains("is-locked")) {
+    window.alert(detailedReportCard.getAttribute("data-lock-message") || "Your subscription level does not qualify for juicy add-ons yet.");
     return;
   }
   detailedVehicleReportSelect.value = detailedVehicleReportSelect.value === "on" ? "off" : "on";

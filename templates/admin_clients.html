@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Client List | Car Flip Analyzer</title>
+    <title>Client Dashboard | Car Flip Analyzer</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -17,23 +17,32 @@
     <main class="shell shell-narrow">
       <section class="composer panel full-evaluation-hero">
         <p class="deal-kicker">Admin</p>
-        <h1>Client List</h1>
+        <h1>Client Dashboard</h1>
         <p class="full-evaluation-copy">
-          Manage tiers, credits, bans, deletion, and partner admin access from one place.
+          Manage clients, live plan settings, tiers, credits, bans, deletion, and partner admin access from one place.
         </p>
       </section>
 
       <section class="panel">
         <div class="results-head">
-          <strong>Client List</strong>
+          <strong>Client Management</strong>
           <div class="results-head-actions">
             <a class="proceed-button secondary compact-button" href="{{ url_for('admin_overview_page') }}">Open Engine Overview</a>
-            <a class="proceed-button secondary compact-button" href="{{ url_for('admin_subscriptions_page') }}">Open Subscription Management</a>
+            <a class="proceed-button secondary compact-button" href="{{ url_for('subscriptions') }}">Open Public Plans</a>
           </div>
         </div>
         <p class="muted">Test admin login: {{ test_admin.email }} / {{ test_admin.password }}</p>
         <div id="admin-users" class="admin-table-wrap muted">
           Loading client list...
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="results-head">
+          <strong>Subscription Management</strong>
+        </div>
+        <div id="admin-subscriptions" class="admin-tier-grid muted">
+          Loading subscription controls...
         </div>
       </section>
     </main>

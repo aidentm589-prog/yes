@@ -24,6 +24,7 @@ DEFAULT_TIER_RULES = {
         "label": "Tier 1",
         "default_credits": 1,
         "has_bulk_access": False,
+        "has_addon_access": False,
         "is_unlimited": False,
         "monthly_price": "$0",
         "yearly_price": "$0",
@@ -33,6 +34,7 @@ DEFAULT_TIER_RULES = {
         "label": "Tier 2",
         "default_credits": 50,
         "has_bulk_access": True,
+        "has_addon_access": True,
         "is_unlimited": False,
         "monthly_price": "$29",
         "yearly_price": "$290",
@@ -42,6 +44,7 @@ DEFAULT_TIER_RULES = {
         "label": "Tier 3",
         "default_credits": 500,
         "has_bulk_access": True,
+        "has_addon_access": True,
         "is_unlimited": False,
         "monthly_price": "$99",
         "yearly_price": "$990",
@@ -51,6 +54,7 @@ DEFAULT_TIER_RULES = {
         "label": "Tier 4",
         "default_credits": 0,
         "has_bulk_access": True,
+        "has_addon_access": True,
         "is_unlimited": True,
         "monthly_price": "$249",
         "yearly_price": "$2,490",
@@ -147,6 +151,7 @@ class AccountService:
         else:
             permissions.append(f'{user.get("credit_balance", 0)} credit{"s" if user.get("credit_balance", 0) != 1 else ""}')
         permissions.append("Bulk enabled" if user.get("has_bulk_access") else "Bulk blocked")
+        permissions.append("Add-ons enabled" if self.tier_rule(int(user["tier"])).get("has_addon_access") else "Add-ons blocked")
         if self.is_admin_user(user):
             permissions.append("Admin access")
         return {
@@ -160,6 +165,7 @@ class AccountService:
             "credit_balance": user["credit_balance"],
             "credits_label": "Unlimited" if user.get("is_unlimited") else str(user.get("credit_balance", 0)),
             "has_bulk_access": bool(user.get("has_bulk_access")),
+            "has_addon_access": bool(rule.get("has_addon_access")),
             "is_unlimited": bool(user.get("is_unlimited")),
             "monthly_price": rule.get("monthly_price", ""),
             "yearly_price": rule.get("yearly_price", ""),
@@ -203,6 +209,7 @@ class AccountService:
         yearly_price = str(payload.get("yearly_price") or current.get("yearly_price") or "").strip()
         marketing_copy = str(payload.get("marketing_copy") or current.get("marketing_copy") or "").strip()
         has_bulk_access = bool(payload.get("has_bulk_access", current["has_bulk_access"]))
+        has_addon_access = bool(payload.get("has_addon_access", current["has_addon_access"]))
         is_unlimited = bool(payload.get("is_unlimited", current["is_unlimited"]))
         return self.repository.upsert_subscription_tier(
             tier=tier,
@@ -212,6 +219,7 @@ class AccountService:
             yearly_price=yearly_price,
             marketing_copy=marketing_copy,
             has_bulk_access=has_bulk_access,
+            has_addon_access=has_addon_access,
             is_unlimited=is_unlimited,
         )
 
@@ -393,6 +401,13 @@ class AccountService:
             CARVANA_PAYOUT_COST,
             "You need 1 available credit to run Carvana Payout.",
         )
+        if not self.tier_rule(int(user["tier"])).get("has_addon_access"):
+            return PermissionDecision(
+                allowed=False,
+                message="Your current tier does not include juicy add-ons yet.",
+                status_code=403,
+                user=user,
+            )
         decision.user = self.get_user_by_id(user["id"]) or user
         return decision
 
@@ -435,6 +450,13 @@ class AccountService:
             FINAL_BUY_ADDON_COST,
             "You need 1 available credit to run this premium buy calculation.",
         )
+        if not self.tier_rule(int(user["tier"])).get("has_addon_access"):
+            return PermissionDecision(
+                allowed=False,
+                message="Your current tier does not include juicy add-ons yet.",
+                status_code=403,
+                user=user,
+            )
         decision.user = self.get_user_by_id(user["id"]) or user
         return decision
 
@@ -492,6 +514,7 @@ class AccountService:
                 yearly_price=rule["yearly_price"],
                 marketing_copy=rule["marketing_copy"],
                 has_bulk_access=rule["has_bulk_access"],
+                has_addon_access=rule["has_addon_access"],
                 is_unlimited=rule["is_unlimited"],
             )
 
@@ -502,6 +525,7 @@ class AccountService:
                 "label": persisted["display_name"],
                 "default_credits": persisted["credits_granted"],
                 "has_bulk_access": persisted["has_bulk_access"],
+                "has_addon_access": persisted.get("has_addon_access", False),
                 "is_unlimited": persisted["is_unlimited"],
                 "monthly_price": persisted["monthly_price"],
                 "yearly_price": persisted["yearly_price"],
@@ -512,6 +536,7 @@ class AccountService:
             "label": default["label"],
             "default_credits": default["default_credits"],
             "has_bulk_access": default["has_bulk_access"],
+            "has_addon_access": default["has_addon_access"],
             "is_unlimited": default["is_unlimited"],
             "monthly_price": default["monthly_price"],
             "yearly_price": default["yearly_price"],
@@ -544,6 +569,7 @@ class AccountService:
                 "yearly_price": item["yearly_price"],
                 "marketing_copy": item["marketing_copy"],
                 "has_bulk_access": item["has_bulk_access"],
+                "has_addon_access": item.get("has_addon_access", False),
                 "is_unlimited": item["is_unlimited"],
             }
             for item in self.list_subscription_tiers()
@@ -553,6 +579,13 @@ class AccountService:
         payload = payload or {}
         cost = BULK_COST if mode == "bulk" else INDIVIDUAL_COST
         if self._detailed_report_enabled(payload):
+            if not self.tier_rule(int(user["tier"])).get("has_addon_access"):
+                return PermissionDecision(
+                    allowed=False,
+                    message="Your current tier does not include juicy add-ons yet.",
+                    status_code=403,
+                    user=user,
+                )
             cost += DETAILED_REPORT_COST
         if mode == "bulk" and not user.get("has_bulk_access"):
             return PermissionDecision(

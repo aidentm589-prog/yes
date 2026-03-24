@@ -44,8 +44,7 @@ function renderAccountStatus(status) {
   }
   if (accountStatusPill) {
     accountStatusPill.innerHTML = `
-      <span>Account</span>
-      <strong><a href="/account">${escapeHtml(status.first_name || "Account")}</a></strong>
+      <strong><a href="/account">My Account</a></strong>
     `;
   }
   if (topbarCreditValue) {
@@ -87,6 +86,11 @@ function badgeClass(status) {
     return "admin-badge disabled";
   }
   return "admin-badge";
+}
+
+function isAdminRole(role) {
+  const normalized = String(role || "").trim().toLowerCase();
+  return normalized === "admin" || normalized === "test_admin";
 }
 
 function renderOverview(data) {
@@ -210,17 +214,25 @@ function renderUsersTable(items) {
             <td><input class="admin-name-input" type="text" value="${escapeHtml(item.first_name || "")}" placeholder="First name" /></td>
             <td>${escapeHtml(item.email)}</td>
             <td>
-              <select class="admin-tier-select">
-                <option value="1" ${item.tier === 1 ? "selected" : ""}>Tier 1</option>
-                <option value="2" ${item.tier === 2 ? "selected" : ""}>Tier 2</option>
-                <option value="3" ${item.tier === 3 ? "selected" : ""}>Tier 3</option>
-                <option value="4" ${item.tier === 4 ? "selected" : ""}>Tier 4</option>
-              </select>
+              <div class="admin-tier-cell">
+                ${isAdminRole(item.role) ? '<span class="admin-role-pill">ADMIN</span>' : ""}
+                <select class="admin-tier-select">
+                  <option value="1" ${item.tier === 1 ? "selected" : ""}>Tier 1</option>
+                  <option value="2" ${item.tier === 2 ? "selected" : ""}>Tier 2</option>
+                  <option value="3" ${item.tier === 3 ? "selected" : ""}>Tier 3</option>
+                  <option value="4" ${item.tier === 4 ? "selected" : ""}>Tier 4</option>
+                </select>
+              </div>
             </td>
             <td><input class="admin-credit-input" type="number" min="0" step="1" value="${escapeHtml(String(item.credit_balance || 0))}" /></td>
             <td>${escapeHtml(formatDateTime(item.created_at))}</td>
             <td>${escapeHtml(formatDateTime(item.updated_at))}</td>
-            <td>${escapeHtml(item.status || "active")}</td>
+            <td>
+              <div class="admin-status-cell">
+                <span>${escapeHtml(item.status || "active")}</span>
+                ${isAdminRole(item.role) ? '<small class="admin-role-note">Elevated platform control</small>' : ""}
+              </div>
+            </td>
             <td>${escapeHtml(item.permissions_summary || "")}</td>
             <td>
               <div class="admin-action-row">
@@ -247,7 +259,28 @@ function renderSubscriptionTiers(items) {
     return;
   }
   adminSubscriptions.classList.remove("muted");
-  adminSubscriptions.innerHTML = items.map((item) => `
+  adminSubscriptions.innerHTML = `
+    <article class="subscription-admin-card subscription-admin-card-admin">
+      <div class="subscription-admin-head subscription-admin-head-admin">
+        <span>Access Level</span>
+        <strong>ADMIN</strong>
+      </div>
+      <p class="subscription-copy">
+        Admin stands above the normal subscription ladder. Use the client controls to promote partners into admin access with client dashboard control, engine overview access, and live subscription editing.
+      </p>
+      <div class="subscription-stats">
+        <div>
+          <span>Scope</span>
+          <strong>Platform Control</strong>
+        </div>
+        <div>
+          <span>Managed From</span>
+          <strong>Client Dashboard</strong>
+        </div>
+      </div>
+      <div class="admin-inline-status muted">Admin access is role-based, not billed as a public tier.</div>
+    </article>
+  ${items.map((item) => `
     <article class="subscription-admin-card" data-tier="${item.tier}">
       <div class="subscription-admin-head">
         <span>Tier ${escapeHtml(String(item.tier))}</span>
@@ -275,6 +308,7 @@ function renderSubscriptionTiers(items) {
       </label>
       <div class="subscription-admin-flags">
         <label><input class="admin-subscription-bulk" type="checkbox" ${item.has_bulk_access ? "checked" : ""} /> Bulk Access</label>
+        <label><input class="admin-subscription-addon" type="checkbox" ${item.has_addon_access ? "checked" : ""} /> Juicy Add-Ons</label>
         <label><input class="admin-subscription-unlimited" type="checkbox" ${item.is_unlimited ? "checked" : ""} /> Unlimited Usage</label>
       </div>
       <div class="admin-action-row">
@@ -282,7 +316,7 @@ function renderSubscriptionTiers(items) {
         <div class="admin-inline-status muted"></div>
       </div>
     </article>
-  `).join("");
+  `).join("")}`;
 }
 
 function renderPayoutJobsTable(items) {
@@ -539,6 +573,7 @@ adminSubscriptions?.addEventListener("click", async (event) => {
         yearly_price: card.querySelector(".admin-subscription-yearly")?.value || "",
         marketing_copy: card.querySelector(".admin-subscription-copy")?.value || "",
         has_bulk_access: Boolean(card.querySelector(".admin-subscription-bulk")?.checked),
+        has_addon_access: Boolean(card.querySelector(".admin-subscription-addon")?.checked),
         is_unlimited: Boolean(card.querySelector(".admin-subscription-unlimited")?.checked),
       }),
     });

@@ -56,21 +56,22 @@
     </a>
   </div>
   <div class="topbar-right">
-    <div class="account-status-pill topbar-account-status">
-      {% if auth_user %}
-        <span>Account</span>
-        <strong><a href="{{ url_for('account') }}">{{ auth_user.first_name or 'Account' }}</a></strong>
-      {% else %}
-        <span>Account</span>
-        <div class="account-status-links">
-          <strong><a href="{{ url_for('login') }}">Log In</a></strong>
-          <strong><a href="{{ url_for('signup') }}">Sign Up</a></strong>
-        </div>
-      {% endif %}
-    </div>
-    <a class="sticky-portfolio-button topbar-action-pill" href="{% if auth_user %}{{ url_for('portfolio') }}{% else %}{{ url_for('login') }}{% endif %}">
-      <span>Portfolio</span>
-    </a>
+    {% if not auth_user or not is_admin_user %}
+      <div class="account-status-pill topbar-account-status">
+        {% if auth_user %}
+          <strong><a href="{{ url_for('account') }}">My Account</a></strong>
+        {% else %}
+          <span>Account</span>
+          <div class="account-status-links">
+            <strong><a href="{{ url_for('login') }}">Log In</a></strong>
+            <strong><a href="{{ url_for('signup') }}">Sign Up</a></strong>
+          </div>
+        {% endif %}
+      </div>
+      <a class="sticky-portfolio-button topbar-action-pill" href="{% if auth_user %}{{ url_for('portfolio') }}{% else %}{{ url_for('login') }}{% endif %}">
+        <span>Portfolio</span>
+      </a>
+    {% endif %}
     <button id="software-chat-button" class="software-chat-button topbar-action-icon" type="button" aria-expanded="false" aria-controls="software-chat-panel" aria-label="Open software assistant">
       <span aria-hidden="true">👨‍💼</span>
     </button>
@@ -79,13 +80,14 @@
     <a class="site-menu-link" href="{{ url_for('index') }}">Evaluation Service</a>
     <a class="site-menu-link" href="{{ url_for('subscriptions') }}">Subscriptions</a>
     {% if auth_user %}
-      <a class="site-menu-link" href="{{ url_for('account') }}">Account</a>
-      <a class="site-menu-link" href="{{ url_for('carvana_payout') }}">Carvana Payout</a>
-      <a class="site-menu-link" href="{{ url_for('portfolio') }}">Evaluation Portfolio</a>
+      {% if not is_admin_user %}
+        <a class="site-menu-link" href="{{ url_for('account') }}">Account</a>
+        <a class="site-menu-link" href="{{ url_for('carvana_payout') }}">Carvana Payout</a>
+        <a class="site-menu-link" href="{{ url_for('portfolio') }}">Evaluation Portfolio</a>
+      {% endif %}
       {% if is_admin_user %}
         <a class="site-menu-link" href="{{ url_for('admin_overview_page') }}">Engine Overview</a>
-        <a class="site-menu-link" href="{{ url_for('admin_clients_page') }}">Client List</a>
-        <a class="site-menu-link" href="{{ url_for('admin_subscriptions_page') }}">Subscription Management</a>
+        <a class="site-menu-link" href="{{ url_for('admin_clients_page') }}">Client Dashboard</a>
       {% endif %}
       <a class="site-menu-link" href="{{ url_for('logout') }}">Log Out</a>
     {% else %}

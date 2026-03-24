@@ -106,6 +106,7 @@ class AccountServiceTests(unittest.TestCase):
             "yearly_price": "$440",
             "marketing_copy": "Updated live",
             "has_bulk_access": True,
+            "has_addon_access": True,
             "is_unlimited": False,
         })
         user = service.create_user_account("Live", "live@example.com", "password123")
@@ -113,6 +114,35 @@ class AccountServiceTests(unittest.TestCase):
 
         self.assertEqual(upgraded["tier_label"], "Scout Plus")
         self.assertEqual(upgraded["credit_balance"], 88)
+
+    def test_addon_access_is_tier_controlled(self) -> None:
+        service = self.create_service()
+        user = service.create_user_account("Addon", "addon@example.com", "password123")
+
+        blocked = service.authorize_evaluation_start(user["id"], "individual", {
+            "vehicle_input": "2014 audi a4 105000 miles",
+            "detailed_vehicle_report": "on",
+        })
+        self.assertFalse(blocked.allowed)
+        self.assertIn("juicy add-ons", blocked.message)
+
+        service.update_subscription_tier(1, {
+            "display_name": "Tier 1",
+            "credits_granted": 2,
+            "monthly_price": "$0",
+            "yearly_price": "$0",
+            "marketing_copy": "One evaluation",
+            "has_bulk_access": False,
+            "has_addon_access": True,
+            "is_unlimited": False,
+        })
+        service.update_user_tier(user["id"], 1)
+
+        allowed = service.authorize_evaluation_start(user["id"], "individual", {
+            "vehicle_input": "2014 audi a4 105000 miles",
+            "detailed_vehicle_report": "on",
+        })
+        self.assertTrue(allowed.allowed)
 
     def test_final_buy_add_on_consumes_one_credit_on_success(self) -> None:
         service = self.create_service()
@@ -146,6 +176,15 @@ class AccountServiceTests(unittest.TestCase):
         user = service.create_user_account("Delete", "deleteme@example.com", "password123")
 
         deleted = service.delete_user_account(user["id"], actor_user_id=999)
+
+        self.assertTrue(deleted)
+        self.assertIsNone(service.get_user_by_id(user["id"]))
+
+    def test_user_can_delete_own_account_via_self_service_path(self) -> None:
+        service = self.create_service()
+        user = service.create_user_account("Self", "selfdelete@example.com", "password123")
+
+        deleted = service.delete_user_account(user["id"])
 
         self.assertTrue(deleted)
         self.assertIsNone(service.get_user_by_id(user["id"]))

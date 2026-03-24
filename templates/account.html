@@ -15,34 +15,47 @@
   <body>
     {% include "_top_bar.html" %}
     <main class="shell shell-narrow">
-      <section class="composer panel full-evaluation-hero">
+      <section class="composer panel full-evaluation-hero account-hero">
         <p class="deal-kicker">My Account</p>
         <h1>{{ auth_user.first_name or auth_user.email }}</h1>
-        <p class="full-evaluation-copy">This is your current tier, credit balance, and testing access for the subscription system.</p>
+        <p class="full-evaluation-copy">Your account status and credits live here, with one clean place to manage access.</p>
       </section>
-      <section class="panel">
-        <div class="results-head">
-          <strong>Subscription Status</strong>
-          <a class="proceed-button secondary compact-button" href="{{ url_for('index') }}">Back to Analyzer</a>
+      <section class="panel account-status-panel">
+        <div class="results-head account-page-actions">
+          <strong>Account Overview</strong>
+          <div class="portfolio-detail-actions">
+            <a class="proceed-button secondary compact-button" href="{{ url_for('index') }}">Back to Analyzer</a>
+            <button id="delete-account-button" class="button compact-button danger-button" type="button">Delete Account</button>
+          </div>
         </div>
-        <div class="admin-grid">
-          <article class="listing-card">
-            <span class="muted">Tier</span>
-            <strong>{{ account_status.tier_label }}</strong>
-          </article>
-          <article class="listing-card">
+        <article class="account-status-spotlight">
+          <span class="account-status-kicker">Status</span>
+          <strong class="account-status-value">{{ account_status.tier_label }}</strong>
+          <p class="account-status-copy">
+            {% if account_status.is_unlimited %}
+              Unlimited usage unlocked across the platform.
+            {% elif account_status.tier == 1 %}
+              Entry access is active with one fresh daily credit flow.
+            {% elif account_status.tier == 2 %}
+              Batch model and juicy add-ons are now part of your access.
+            {% elif account_status.tier == 3 %}
+              High-volume access is live with a deeper credit runway.
+            {% else %}
+              Your subscription access is active and ready.
+            {% endif %}
+          </p>
+        </article>
+        <div class="account-summary-grid">
+          <article class="listing-card account-summary-card">
             <span class="muted">Credits</span>
             <strong>{{ account_status.credits_label }}</strong>
           </article>
-          <article class="listing-card">
-            <span class="muted">Permissions</span>
-            <strong>{{ account_status.permissions_summary }}</strong>
-          </article>
-          <article class="listing-card">
-            <span class="muted">Status</span>
-            <strong>{{ account_status.status }}</strong>
+          <article class="listing-card account-summary-card">
+            <span class="muted">Member Name</span>
+            <strong>{{ auth_user.first_name or auth_user.email }}</strong>
           </article>
         </div>
+        <p id="account-page-status" class="inline-status muted"></p>
       </section>
       <section class="panel">
         <div class="results-head">
@@ -62,5 +75,33 @@
     </main>
     <script src="{{ url_for('static', filename='nav.js') }}"></script>
     <script src="{{ url_for('static', filename='software_chat.js') }}"></script>
+    <script>
+      const deleteAccountButton = document.getElementById("delete-account-button");
+      const accountPageStatus = document.getElementById("account-page-status");
+
+      deleteAccountButton?.addEventListener("click", async () => {
+        const confirmed = window.confirm("Delete your account permanently? This also removes your saved evaluations and payout history.");
+        if (!confirmed) {
+          return;
+        }
+        if (accountPageStatus) {
+          accountPageStatus.textContent = "Deleting account...";
+        }
+        deleteAccountButton.disabled = true;
+        try {
+          const response = await fetch("/api/account", { method: "DELETE" });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok || !payload.ok) {
+            throw new Error(payload.message || "Unable to delete account.");
+          }
+          window.location.href = "{{ url_for('index') }}";
+        } catch (error) {
+          if (accountPageStatus) {
+            accountPageStatus.textContent = error instanceof Error ? error.message : "Unable to delete account.";
+          }
+          deleteAccountButton.disabled = false;
+        }
+      });
+    </script>
   </body>
 </html>
