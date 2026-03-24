@@ -405,6 +405,109 @@ textarea,
   backdrop-filter: blur(6px);
 }
 
+.composer-status-strip {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-height: 88px;
+  margin-bottom: 0.85rem;
+}
+
+.composer-credit-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid rgba(116, 196, 255, 0.22);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent),
+    rgba(8, 24, 58, 0.34);
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(14px);
+}
+
+.composer-credit-icon {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(116, 196, 255, 0.24), rgba(34, 120, 205, 0.42));
+  color: #eff9ff;
+  font-weight: 800;
+  font-size: 1.08rem;
+  box-shadow: 0 0 20px rgba(116, 196, 255, 0.3);
+}
+
+.composer-credit-copy {
+  display: grid;
+  justify-items: start;
+  gap: 0.14rem;
+}
+
+.composer-credit-copy span {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.composer-credit-copy strong {
+  font-family: "Cormorant Garamond", serif;
+  font-size: 2rem;
+  line-height: 1;
+  color: #f5fbff;
+}
+
+.composer-tier-banner {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(25vw, 340px);
+  min-width: 260px;
+  padding: 0.95rem 1.25rem 1.05rem;
+  border: 1px solid rgba(116, 196, 255, 0.24);
+  border-radius: 26px;
+  background:
+    radial-gradient(circle at top center, rgba(116, 196, 255, 0.18), transparent 48%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent),
+    rgba(8, 23, 54, 0.42);
+  box-shadow:
+    0 22px 42px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px);
+}
+
+.composer-tier-kicker {
+  display: block;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.78rem;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.composer-tier-banner strong {
+  display: block;
+  margin-top: 0.18rem;
+  font-family: "Cormorant Garamond", serif;
+  font-size: clamp(2rem, 3vw, 2.8rem);
+  line-height: 1;
+  color: #f6fbff;
+  text-shadow: 0 8px 24px rgba(116, 196, 255, 0.18);
+}
+
+.composer-tier-banner small {
+  display: block;
+  margin-top: 0.34rem;
+  color: rgba(255, 255, 255, 0.82);
+  line-height: 1.5;
+}
+
 .composer-form {
   display: grid;
   gap: 1rem;
@@ -645,6 +748,44 @@ textarea {
     0 24px 48px rgba(0, 0, 0, 0.24),
     0 0 0 1px rgba(116, 196, 255, 0.2),
     inset 0 0 0 1px rgba(178, 229, 255, 0.22);
+}
+
+.choice-card.is-locked {
+  opacity: 0.72;
+  cursor: not-allowed;
+  border-style: dashed;
+}
+
+.choice-card.is-locked:hover,
+.choice-card.is-locked:focus-visible {
+  transform: translateY(-2px);
+  border-color: rgba(255, 168, 168, 0.42);
+  box-shadow:
+    0 22px 38px rgba(0, 0, 0, 0.2),
+    0 0 0 1px rgba(255, 160, 160, 0.12);
+  filter: brightness(1.02);
+}
+
+.choice-card.is-locked::after {
+  content: "Tier upgrade required";
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  padding: 0.34rem 0.68rem;
+  border-radius: 999px;
+  background: rgba(125, 20, 38, 0.3);
+  border: 1px solid rgba(255, 162, 162, 0.28);
+  color: #ffdede;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.choice-lock-note {
+  margin-top: auto;
+  color: rgba(255, 220, 220, 0.88);
+  font-size: 0.88rem;
+  font-weight: 700;
 }
 
 .choice-card.is-selected::after,

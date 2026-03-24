@@ -52,6 +52,9 @@ const mainFavoriteStatus = document.getElementById("main-favorite-status");
 const stickyPortfolioButton = document.querySelector(".sticky-portfolio-button");
 const compSortSelect = document.getElementById("comp-sort-select");
 const accountStatusPill = document.querySelector(".account-status-pill");
+const composerCreditValue = document.getElementById("composer-credit-value");
+const composerTierValue = document.getElementById("composer-tier-value");
+const composerTierMessage = document.getElementById("composer-tier-message");
 const DEFAULT_VISIBLE_COMPS = 6;
 const EVALUATION_CACHE_KEY = "car-flip-analyzer:latest-evaluation";
 
@@ -94,11 +97,27 @@ function renderAccountStatus(status) {
   const value = status.is_unlimited
     ? "Unlimited"
     : `Credits: ${Number(status.credit_balance || 0)}`;
+  const creditOnlyValue = status.is_unlimited
+    ? "Unlimited"
+    : `${Number(status.credit_balance || 0)}`;
 
   accountStatusPill.innerHTML = `
     <span>${escapeHtml(label)}</span>
     <strong>${escapeHtml(value)}</strong>
   `;
+
+  if (composerCreditValue) {
+    composerCreditValue.textContent = creditOnlyValue;
+  }
+  if (composerTierValue) {
+    composerTierValue.textContent = label;
+  }
+  if (composerTierMessage) {
+    composerTierMessage.textContent = status.has_bulk_access
+      ? "Bulk evaluation and premium workflows are available."
+      : "Advance your tier to unlock bulk evaluation and higher-volume deal flow.";
+  }
+  syncBulkLockState(status);
 }
 
 function buildEvaluationCacheFingerprint(payload = {}) {
@@ -181,6 +200,16 @@ function setChoiceCardSelection(groupName, value) {
   document.querySelectorAll(`[data-choice-group="${groupName}"]`).forEach((element) => {
     element.classList.toggle("is-selected", element.getAttribute("data-value") === value);
   });
+}
+
+function syncBulkLockState(status) {
+  const bulkCard = evaluationModeCards?.querySelector('[data-value="bulk"]');
+  if (!bulkCard || !status) {
+    return;
+  }
+  const isLocked = !status.is_unlimited && !status.has_bulk_access;
+  bulkCard.classList.toggle("is-locked", isLocked);
+  bulkCard.setAttribute("aria-disabled", isLocked ? "true" : "false");
 }
 
 function setDisabledForField(container, disabled) {
@@ -1452,6 +1481,10 @@ favoriteFromMain?.addEventListener("click", saveMainEvaluationToPortfolio);
 evaluationModeCards?.addEventListener("click", (event) => {
   const card = event.target.closest('[data-choice-group="evaluation-mode"]');
   if (!card || !evaluationModeSelect) {
+    return;
+  }
+  if (card.classList.contains("is-locked")) {
+    window.alert(card.getAttribute("data-lock-message") || "Your subscription level does not qualify for this model.");
     return;
   }
   evaluationModeSelect.value = card.getAttribute("data-value") || "individual";

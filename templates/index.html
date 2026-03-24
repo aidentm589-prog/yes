@@ -69,6 +69,42 @@
     </aside>
     <main class="shell">
       <section class="composer panel">
+        <div class="composer-status-strip">
+          <div class="composer-credit-chip" id="composer-credit-chip">
+            <span class="composer-credit-icon" aria-hidden="true">$</span>
+            <div class="composer-credit-copy">
+              <span>Credits Remaining</span>
+              <strong id="composer-credit-value">
+                {% if auth_user and account_status %}
+                  {% if account_status.is_unlimited %}Unlimited{% else %}{{ account_status.credit_balance }}{% endif %}
+                {% else %}
+                  --
+                {% endif %}
+              </strong>
+            </div>
+          </div>
+          <div class="composer-tier-banner" id="composer-tier-banner">
+            <span class="composer-tier-kicker">Current Tier</span>
+            <strong id="composer-tier-value">
+              {% if auth_user and account_status %}
+                {{ account_status.tier_label }}
+              {% else %}
+                Guest Access
+              {% endif %}
+            </strong>
+            <small id="composer-tier-message">
+              {% if auth_user and account_status %}
+                {% if account_status.has_bulk_access %}
+                  Bulk evaluation and premium workflows are available.
+                {% else %}
+                  Advance your tier to unlock bulk evaluation and higher-volume deal flow.
+                {% endif %}
+              {% else %}
+                Sign up to start at Tier 1 and begin unlocking more evaluation power.
+              {% endif %}
+            </small>
+          </div>
+        </div>
         <h1>Car Flip Analyzer</h1>
         <form id="lookup-form" class="composer-form">
           <label class="full">
@@ -117,10 +153,18 @@
                 <strong>Individual Evaluation Model</strong>
                 <small>One vehicle, full comps, focused deal readout.</small>
               </button>
-              <button class="choice-card" type="button" data-choice-group="evaluation-mode" data-value="bulk">
+              <button
+                class="choice-card {% if auth_user and account_status and not account_status.has_bulk_access %}is-locked{% endif %}"
+                type="button"
+                data-choice-group="evaluation-mode"
+                data-value="bulk"
+                data-lock-message="Your subscription level does not qualify for Bulk Evaluation yet."
+                {% if auth_user and account_status and not account_status.has_bulk_access %}aria-disabled="true"{% endif %}
+              >
                 <span class="choice-eyebrow">Batch</span>
                 <strong>Bulk Evaluation Model</strong>
                 <small>Paste a whole queue and rank the best opportunities fast.</small>
+                <span class="choice-lock-note">Upgrade required</span>
               </button>
             </div>
             <select id="evaluation-mode" name="evaluation_mode" class="visually-hidden">
