@@ -217,6 +217,7 @@ function renderUsersTable(items) {
               <div class="admin-tier-cell">
                 ${isAdminRole(item.role) ? '<span class="admin-role-pill">ADMIN</span>' : ""}
                 <select class="admin-tier-select">
+                  <option value="admin" ${isAdminRole(item.role) ? "selected" : ""}>ADMIN</option>
                   <option value="1" ${item.tier === 1 ? "selected" : ""}>Tier 1</option>
                   <option value="2" ${item.tier === 2 ? "selected" : ""}>Tier 2</option>
                   <option value="3" ${item.tier === 3 ? "selected" : ""}>Tier 3</option>

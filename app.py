@@ -146,7 +146,25 @@ def account():
 
 @app.get("/subscriptions")
 def subscriptions():
-    return render_template("subscriptions.html", subscription_tiers=service.list_public_subscription_tiers())
+    subscription_tiers = service.list_public_subscription_tiers()
+    if current_user() and service.is_admin_user(current_user()):
+        subscription_tiers = [
+            {
+                "tier": "admin",
+                "display_name": "ADMIN",
+                "monthly_price": "Custom",
+                "yearly_price": "Custom",
+                "marketing_copy": "Platform-level control with unlimited access, client dashboard control, and engine oversight.",
+                "credits_granted": 0,
+                "has_bulk_access": True,
+                "has_addon_access": True,
+                "is_unlimited": True,
+                "is_free": False,
+                "cta_label": "Apply Admin Access",
+            },
+            *subscription_tiers,
+        ]
+    return render_template("subscriptions.html", subscription_tiers=subscription_tiers)
 
 
 @app.get("/full-evaluation")
@@ -320,7 +338,10 @@ def account_subscription_select():
     if tier is None:
         return jsonify({"ok": False, "message": "Missing tier."}), 400
     try:
-        updated = service.update_user_tier(current_user()["id"], int(tier))
+        if str(tier).strip().lower() == "admin":
+            updated = service.assign_admin_subscription(current_user()["id"])
+        else:
+            updated = service.update_user_tier(current_user()["id"], int(tier))
     except VehicleApiError as exc:
         return jsonify({"ok": False, "message": str(exc)}), 400
     if not updated:
@@ -330,7 +351,25 @@ def account_subscription_select():
 
 @app.get("/api/subscriptions")
 def public_subscriptions():
-    return jsonify({"ok": True, "items": service.list_public_subscription_tiers()})
+    items = service.list_public_subscription_tiers()
+    if current_user() and service.is_admin_user(current_user()):
+        items = [
+            {
+                "tier": "admin",
+                "display_name": "ADMIN",
+                "monthly_price": "Custom",
+                "yearly_price": "Custom",
+                "marketing_copy": "Platform-level control with unlimited access, client dashboard control, and engine oversight.",
+                "credits_granted": 0,
+                "has_bulk_access": True,
+                "has_addon_access": True,
+                "is_unlimited": True,
+                "is_free": False,
+                "cta_label": "Apply Admin Access",
+            },
+            *items,
+        ]
+    return jsonify({"ok": True, "items": items})
 
 
 @app.post("/api/final-buy-offer")
@@ -439,7 +478,10 @@ def admin_update_user(user_id: int):
         if first_name is not None:
             updated = service.update_user_profile(user_id, str(first_name))
         if tier is not None:
-            updated = service.update_user_tier(user_id, int(tier), int(credits) if credits is not None else None)
+            if str(tier).strip().lower() == "admin":
+                updated = service.assign_admin_subscription(user_id)
+            else:
+                updated = service.update_user_tier(user_id, int(tier), int(credits) if credits is not None else None)
         elif credits is not None:
             updated = service.update_user_credits(user_id, int(credits))
         elif updated is None:

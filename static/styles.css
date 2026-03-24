@@ -1124,6 +1124,17 @@ textarea:focus {
   box-shadow: 0 24px 40px rgba(0, 0, 0, 0.18);
 }
 
+.subscription-card-admin {
+  border-color: rgba(163, 230, 255, 0.3);
+  background:
+    radial-gradient(circle at top, rgba(147, 220, 255, 0.2), transparent 52%),
+    linear-gradient(180deg, rgba(20, 50, 96, 0.82), rgba(7, 21, 46, 0.74));
+  box-shadow:
+    0 0 0 1px rgba(181, 236, 255, 0.08) inset,
+    0 0 34px rgba(98, 191, 255, 0.16),
+    0 24px 44px rgba(0, 0, 0, 0.22);
+}
+
 .subscription-tier {
   margin: 0 0 0.4rem;
   color: rgba(255, 255, 255, 0.7);

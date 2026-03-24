@@ -145,6 +145,8 @@ class AccountService:
 
     def serialize_account_status(self, user: dict[str, Any]) -> dict[str, Any]:
         rule = self.tier_rule(int(user["tier"]))
+        is_admin_access = self.is_admin_user(user)
+        tier_label = "ADMIN" if is_admin_access else rule["label"]
         permissions = []
         if user.get("is_unlimited"):
             permissions.append("Unlimited evaluations")
@@ -152,7 +154,7 @@ class AccountService:
             permissions.append(f'{user.get("credit_balance", 0)} credit{"s" if user.get("credit_balance", 0) != 1 else ""}')
         permissions.append("Bulk enabled" if user.get("has_bulk_access") else "Bulk blocked")
         permissions.append("Add-ons enabled" if self.tier_rule(int(user["tier"])).get("has_addon_access") else "Add-ons blocked")
-        if self.is_admin_user(user):
+        if is_admin_access:
             permissions.append("Admin access")
         return {
             "id": user["id"],
@@ -160,8 +162,8 @@ class AccountService:
             "email": user["email"],
             "role": user["role"],
             "tier": user["tier"],
-            "tier_label": rule["label"],
-            "tier_name": rule["label"],
+            "tier_label": tier_label,
+            "tier_name": tier_label,
             "credit_balance": user["credit_balance"],
             "credits_label": "Unlimited" if user.get("is_unlimited") else str(user.get("credit_balance", 0)),
             "has_bulk_access": bool(user.get("has_bulk_access")),
@@ -240,6 +242,18 @@ class AccountService:
         if tier == 1 and update_fields["credit_balance"] >= 1:
             update_fields["last_free_credit_at"] = _utc_now_iso()
         updated = self.repository.update_user_account(user_id, **update_fields)
+        return self.get_user_subscription_status(user_id) if updated else None
+
+    def assign_admin_subscription(self, user_id: int) -> dict[str, Any] | None:
+        updated = self.repository.update_user_account(
+            user_id,
+            role="admin",
+            tier=4,
+            credit_balance=0,
+            has_bulk_access=True,
+            is_unlimited=True,
+            status="active",
+        )
         return self.get_user_subscription_status(user_id) if updated else None
 
     def update_user_credits(self, user_id: int, credit_balance: int) -> dict[str, Any] | None:

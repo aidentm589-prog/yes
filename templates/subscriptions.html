@@ -29,12 +29,12 @@
 
       <section class="subscriptions-grid" id="subscriptions-grid">
         {% for tier in subscription_tiers %}
-          <article class="subscription-card" data-tier="{{ tier.tier }}">
-            <p class="subscription-tier">Tier {{ tier.tier }}</p>
+          <article class="subscription-card {% if tier.tier == 'admin' %}subscription-card-admin{% endif %}" data-tier="{{ tier.tier }}">
+            <p class="subscription-tier">{% if tier.tier == 'admin' %}Access Level{% else %}Tier {{ tier.tier }}{% endif %}</p>
             <h2>{{ tier.display_name }}</h2>
             <div class="subscription-price">
               <strong data-price-monthly="{{ tier.monthly_price }}" data-price-yearly="{{ tier.yearly_price }}">{{ tier.monthly_price }}</strong>
-              <span>/ month</span>
+              <span>{% if tier.tier == 'admin' %}status{% else %}/ month{% endif %}</span>
             </div>
             <p class="subscription-copy">{{ tier.marketing_copy }}</p>
             <div class="subscription-stats">

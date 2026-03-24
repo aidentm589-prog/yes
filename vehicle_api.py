@@ -123,6 +123,12 @@ class VehicleValueService:
         except Exception as exc:  # noqa: BLE001
             raise VehicleApiError(str(exc)) from exc
 
+    def assign_admin_subscription(self, user_id: int) -> dict[str, Any] | None:
+        try:
+            return self.accounts.assign_admin_subscription(user_id)
+        except Exception as exc:  # noqa: BLE001
+            raise VehicleApiError(str(exc)) from exc
+
     def update_user_credits(self, user_id: int, credit_balance: int) -> dict[str, Any] | None:
         try:
             return self.accounts.update_user_credits(user_id, credit_balance)
