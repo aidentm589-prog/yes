@@ -1,0 +1,429 @@
+from __future__ import annotations
+
+import os
+from functools import wraps
+from typing import Any, Callable
+
+from flask import Flask, g, jsonify, redirect, render_template, request, session, url_for
+from werkzeug.middleware.proxy_fix import ProxyFix
+
+from vehicle_api import VehicleApiError, VehicleValueService
+
+
+app = Flask(__name__)
+app.json.sort_keys = False
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "car-flip-analyzer-dev-secret")
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)  # type: ignore[assignment]
+app.config["PREFERRED_URL_SCHEME"] = "https"
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = os.getenv("SESSION_COOKIE_SECURE", "true").strip().lower() in {"1", "true", "yes", "on"}
+service = VehicleValueService()
+
+
+def canonical_host() -> str:
+    return os.getenv("CANONICAL_HOST", "").strip().lower()
+
+
+def current_user() -> dict[str, Any] | None:
+    return getattr(g, "current_user", None)
+
+
+def login_required(view: Callable[..., Any]) -> Callable[..., Any]:
+    @wraps(view)
+    def wrapped(*args: Any, **kwargs: Any) -> Any:
+        if not current_user():
+            return redirect(url_for("login", next=request.path))
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
+def admin_required(view: Callable[..., Any]) -> Callable[..., Any]:
+    @wraps(view)
+    def wrapped(*args: Any, **kwargs: Any) -> Any:
+        user = current_user()
+        if not service.is_admin_user(user):
+            return redirect(url_for("index"))
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
+@app.before_request
+def load_current_user() -> None:
+    service.ensure_background_workers()
+    target_host = canonical_host()
+    if (
+        target_host
+        and request.method in {"GET", "HEAD"}
+        and not request.path.startswith("/healthz")
+        and request.host
+        and request.host.lower() != target_host
+    ):
+        destination = f"https://{target_host}{request.full_path.rstrip('?')}"
+        return redirect(destination, code=308)
+    user_id = session.get("user_id")
+    g.current_user = service.get_user(user_id) if user_id else None
+
+
+@app.get("/healthz")
+def healthz():
+    return jsonify({"ok": True, "status": "healthy"})
+
+
+@app.context_processor
+def inject_account_context() -> dict[str, Any]:
+    user = current_user()
+    return {
+        "auth_user": user,
+        "account_status": service.get_account_status(user["id"]) if user else None,
+        "is_admin_user": service.is_admin_user(user),
+    }
+
+
+@app.get("/")
+def index():
+    return render_template("index.html")
+
+
+@app.get("/login")
+def login():
+    if current_user():
+        return redirect(url_for("index"))
+    return render_template("login.html", error=request.args.get("error", ""))
+
+
+@app.post("/login")
+def login_post():
+    try:
+        user = service.login_user(
+            str(request.form.get("email") or ""),
+            str(request.form.get("password") or ""),
+        )
+    except VehicleApiError as exc:
+        return render_template("login.html", error=str(exc)), 400
+    session["user_id"] = user["id"]
+    return redirect(url_for("index"))
+
+
+@app.get("/signup")
+def signup():
+    if current_user():
+        return redirect(url_for("index"))
+    return render_template("signup.html", error=request.args.get("error", ""))
+
+
+@app.post("/signup")
+def signup_post():
+    try:
+        user = service.create_user_account(
+            str(request.form.get("email") or ""),
+            str(request.form.get("password") or ""),
+        )
+    except VehicleApiError as exc:
+        return render_template("signup.html", error=str(exc)), 400
+    session["user_id"] = user["id"]
+    return redirect(url_for("index"))
+
+
+@app.get("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("index"))
+
+
+@app.get("/account")
+@login_required
+def account():
+    return render_template(
+        "account.html",
+        account_status=service.get_account_status(current_user()["id"]),
+        test_admin=service.test_admin_credentials(),
+    )
+
+
+@app.get("/full-evaluation")
+@login_required
+def full_evaluation():
+    return render_template("full_evaluation.html")
+
+
+@app.get("/portfolio")
+@login_required
+def portfolio():
+    return render_template("portfolio.html")
+
+
+@app.get("/carvana-payout")
+@login_required
+def carvana_payout():
+    return render_template("carvana_payout.html")
+
+
+@app.get("/portfolio/<int:evaluation_id>")
+@login_required
+def portfolio_detail(evaluation_id: int):
+    return render_template("portfolio_detail.html", evaluation_id=evaluation_id)
+
+
+@app.get("/admin")
+@admin_required
+def admin():
+    return redirect(url_for("admin_overview_page"))
+
+
+@app.get("/admin/overview")
+@admin_required
+def admin_overview_page():
+    return render_template("admin_overview.html", test_admin=service.test_admin_credentials())
+
+
+@app.get("/admin/clients")
+@admin_required
+def admin_clients_page():
+    return render_template("admin_clients.html", test_admin=service.test_admin_credentials())
+
+
+@app.post("/api/valuation")
+def valuation():
+    payload = request.get_json(force=True, silent=True) or {}
+    mode = str(payload.get("evaluation_mode", "individual") or "individual").strip().lower()
+    decision = service.authorize_evaluation_start(session.get("user_id"), mode, payload)
+    if not decision.allowed:
+        return jsonify(
+            {
+                "ok": False,
+                "message": decision.message,
+                "account_status": service.get_account_status(decision.user["id"]) if decision.user else None,
+            }
+        ), decision.status_code
+    try:
+        result = service.run_condition_sweep(payload)
+    except VehicleApiError as exc:
+        return jsonify({"ok": False, "message": str(exc), "account_status": service.get_account_status(session.get("user_id"))}), 400
+    return jsonify({"ok": True, **result, "account_status": service.get_account_status(session.get("user_id"))})
+
+
+@app.post("/api/portfolio")
+@login_required
+def save_portfolio():
+    payload = request.get_json(force=True, silent=True) or {}
+    vehicle_title = str(payload.get("vehicle_title") or "").strip()
+    vehicle_input = str(payload.get("vehicle_input") or "").strip()
+    preview_payload = payload.get("preview") or {}
+    snapshot_payload = payload.get("snapshot") or {}
+    if not vehicle_title or not vehicle_input or not isinstance(preview_payload, dict) or not isinstance(snapshot_payload, dict):
+        return jsonify({"ok": False, "message": "Missing portfolio payload."}), 400
+    evaluation_id = service.save_evaluation(
+        user_id=current_user()["id"],
+        vehicle_title=vehicle_title,
+        vehicle_input=vehicle_input,
+        preview_payload=preview_payload,
+        snapshot_payload=snapshot_payload,
+    )
+    return jsonify({"ok": True, "id": evaluation_id})
+
+
+@app.get("/api/portfolio")
+@login_required
+def list_portfolio():
+    return jsonify({"ok": True, "items": service.list_saved_evaluations(user_id=current_user()["id"])})
+
+
+@app.get("/api/portfolio/<int:evaluation_id>")
+@login_required
+def get_portfolio(evaluation_id: int):
+    item = service.get_saved_evaluation(evaluation_id, user_id=current_user()["id"])
+    if not item:
+        return jsonify({"ok": False, "message": "Evaluation not found."}), 404
+    return jsonify({"ok": True, "item": item})
+
+
+@app.patch("/api/portfolio/<int:evaluation_id>")
+@login_required
+def update_portfolio(evaluation_id: int):
+    payload = request.get_json(force=True, silent=True) or {}
+    vehicle_title = str(payload.get("vehicle_title") or "").strip()
+    preview_payload = payload.get("preview") or {}
+    snapshot_payload = payload.get("snapshot") or {}
+    if not vehicle_title or not isinstance(preview_payload, dict) or not isinstance(snapshot_payload, dict):
+        return jsonify({"ok": False, "message": "Missing portfolio payload."}), 400
+    updated = service.update_saved_evaluation(
+        evaluation_id=evaluation_id,
+        user_id=current_user()["id"],
+        vehicle_title=vehicle_title,
+        preview_payload=preview_payload,
+        snapshot_payload=snapshot_payload,
+    )
+    if not updated:
+        return jsonify({"ok": False, "message": "Evaluation not found."}), 404
+    return jsonify({"ok": True})
+
+
+@app.delete("/api/portfolio/<int:evaluation_id>")
+@login_required
+def delete_portfolio(evaluation_id: int):
+    deleted = service.delete_saved_evaluation(evaluation_id, user_id=current_user()["id"])
+    if not deleted:
+        return jsonify({"ok": False, "message": "Evaluation not found."}), 404
+    return jsonify({"ok": True})
+
+
+@app.post("/api/software-chat")
+def software_chat():
+    payload = request.get_json(force=True, silent=True) or {}
+    messages = payload.get("messages") or []
+    if not isinstance(messages, list):
+        return jsonify({"ok": False, "message": "Invalid chat payload."}), 400
+    try:
+        result = service.software_chat_reply(messages)
+    except VehicleApiError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    return jsonify({"ok": True, **result})
+
+
+@app.get("/api/account/status")
+def account_status():
+    status = service.get_account_status(session.get("user_id"))
+    return jsonify({"ok": True, "account_status": status})
+
+
+@app.post("/api/carvana-payout/jobs")
+@login_required
+def create_carvana_payout_job():
+    payload = request.get_json(force=True, silent=True) or {}
+    try:
+        service.validate_carvana_payout_payload(payload)
+    except VehicleApiError as exc:
+        return jsonify({"ok": False, "message": str(exc), "account_status": service.get_account_status(current_user()["id"])}), 400
+    decision = service.authorize_carvana_payout_start(current_user()["id"])
+    if not decision.allowed:
+        return jsonify(
+            {
+                "ok": False,
+                "message": decision.message,
+                "account_status": service.get_account_status(decision.user["id"]) if decision.user else None,
+            }
+        ), decision.status_code
+    try:
+        job = service.create_carvana_payout_job(current_user()["id"], payload)
+    except VehicleApiError as exc:
+        return jsonify({"ok": False, "message": str(exc), "account_status": service.get_account_status(current_user()["id"])}), 400
+    return jsonify({"ok": True, "job": job, "account_status": service.get_account_status(current_user()["id"])}), 201
+
+
+@app.get("/api/carvana-payout/jobs")
+@login_required
+def list_carvana_payout_jobs():
+    limit = int(request.args.get("limit", "15") or "15")
+    return jsonify({"ok": True, "items": service.list_carvana_payout_jobs(user_id=current_user()["id"], limit=limit)})
+
+
+@app.get("/api/carvana-payout/jobs/<int:job_id>")
+@login_required
+def get_carvana_payout_job(job_id: int):
+    job = service.get_carvana_payout_job(job_id, user_id=current_user()["id"])
+    if not job:
+        return jsonify({"ok": False, "message": "Payout job not found."}), 404
+    return jsonify({"ok": True, "job": job})
+
+
+@app.post("/api/carvana-payout/jobs/<int:job_id>/retry")
+@login_required
+def retry_carvana_payout_job(job_id: int):
+    try:
+        job = service.retry_carvana_payout_job(job_id, user_id=current_user()["id"])
+    except VehicleApiError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    if not job:
+        return jsonify({"ok": False, "message": "Payout job not found."}), 404
+    return jsonify({"ok": True, "job": job})
+
+
+@app.get("/api/admin/overview")
+@admin_required
+def admin_overview():
+    overview = service.admin_overview()
+    overview["client_count"] = len(service.list_users())
+    overview["test_admin"] = service.test_admin_credentials()
+    return jsonify({"ok": True, **overview})
+
+
+@app.get("/api/admin/users")
+@admin_required
+def admin_users():
+    return jsonify({"ok": True, "items": service.list_users()})
+
+
+@app.get("/api/admin/payout-jobs")
+@admin_required
+def admin_payout_jobs():
+    return jsonify({"ok": True, "items": service.list_carvana_payout_jobs(user_id=None, limit=30)})
+
+
+@app.patch("/api/admin/users/<int:user_id>")
+@admin_required
+def admin_update_user(user_id: int):
+    payload = request.get_json(force=True, silent=True) or {}
+    tier = payload.get("tier")
+    credits = payload.get("credit_balance")
+    if tier is None:
+        return jsonify({"ok": False, "message": "Missing tier."}), 400
+    try:
+        updated = service.update_user_tier(user_id, int(tier), int(credits) if credits is not None else None)
+    except VehicleApiError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    if not updated:
+        return jsonify({"ok": False, "message": "User not found."}), 404
+    return jsonify({"ok": True, "item": updated})
+
+
+@app.patch("/api/admin/users/<int:user_id>/role")
+@admin_required
+def admin_update_user_role(user_id: int):
+    payload = request.get_json(force=True, silent=True) or {}
+    role = str(payload.get("role") or "").strip().lower()
+    if not role:
+        return jsonify({"ok": False, "message": "Missing role."}), 400
+    try:
+        updated = service.update_user_role(user_id, role, actor_user_id=current_user()["id"])
+    except VehicleApiError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    if not updated:
+        return jsonify({"ok": False, "message": "User not found."}), 404
+    return jsonify({"ok": True, "item": updated})
+
+
+@app.patch("/api/admin/users/<int:user_id>/status")
+@admin_required
+def admin_update_user_status(user_id: int):
+    payload = request.get_json(force=True, silent=True) or {}
+    status = str(payload.get("status") or "").strip().lower()
+    if not status:
+        return jsonify({"ok": False, "message": "Missing status."}), 400
+    try:
+        updated = service.update_user_status(user_id, status, actor_user_id=current_user()["id"])
+    except VehicleApiError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    if not updated:
+        return jsonify({"ok": False, "message": "User not found."}), 404
+    return jsonify({"ok": True, "item": updated})
+
+
+@app.delete("/api/admin/users/<int:user_id>")
+@admin_required
+def admin_delete_user(user_id: int):
+    try:
+        deleted = service.delete_user_account(user_id, actor_user_id=current_user()["id"])
+    except VehicleApiError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    if not deleted:
+        return jsonify({"ok": False, "message": "User not found."}), 404
+    return jsonify({"ok": True})
+
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", "5001"))
+    debug = os.getenv("FLASK_DEBUG", "true").strip().lower() in {"1", "true", "yes", "on"}
+    app.run(host="0.0.0.0", port=port, debug=debug)

@@ -1,0 +1,4 @@
+.venv/
+.env
+.kbb-browser-profile/
+__pycache__/

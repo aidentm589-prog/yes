@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Log In | Car Flip Analyzer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <main class="shell shell-narrow">
+      <section class="composer panel full-evaluation-hero">
+        <p class="deal-kicker">Account Access</p>
+        <h1>Log In</h1>
+        <p class="full-evaluation-copy">Sign in to use evaluations, credits, portfolio, and your subscription tier.</p>
+      </section>
+      <section class="panel">
+        <form method="post" action="{{ url_for('login_post') }}" class="composer-form auth-form">
+          <label class="full listing-price-field">
+            <span class="input-label-text">Email</span>
+            <input name="email" type="email" required placeholder="you@example.com" />
+          </label>
+          <label class="full listing-price-field">
+            <span class="input-label-text">Password</span>
+            <input name="password" type="password" required placeholder="Password" />
+          </label>
+          {% if error %}
+            <p class="auth-error">{{ error }}</p>
+          {% endif %}
+          <div class="actions auth-actions">
+            <button type="submit" class="button">Log In</button>
+            <a class="proceed-button secondary compact-button" href="{{ url_for('signup') }}">Create Account</a>
+          </div>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>

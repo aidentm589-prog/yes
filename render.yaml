@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: aidens-car-resell-price-analyzer
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --workers 1 --threads 8 --timeout 120
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.2"
+      - key: FLASK_DEBUG
+        value: "false"
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
+      - key: COMP_SQLITE_PATH
+        value: /var/data/vehicle_comps.db
+    disk:
+      name: vehicle-comps-data
+      mountPath: /var/data
+      sizeGB: 1

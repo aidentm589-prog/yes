@@ -1,0 +1,31 @@
+{
+  "id": "mc-1",
+  "vin": "WAUBFAFL1EN000001",
+  "year": 2014,
+  "make": "Audi",
+  "model": "A4",
+  "trim": "Premium Plus",
+  "price": 8995,
+  "miles": 104500,
+  "drivetrain": "AWD",
+  "transmission": "Automatic",
+  "fuel_type": "Gasoline",
+  "dealer": {
+    "name": "Sample Auto",
+    "city": "Providence",
+    "state": "RI",
+    "zip": "02893"
+  },
+  "media": {
+    "photo_links": [
+      "https://dealer.example/image.jpg"
+    ]
+  },
+  "car_location": {
+    "city": "Providence",
+    "state": "RI",
+    "lat": 41.82,
+    "lng": -71.41
+  },
+  "dom_active": 14
+}

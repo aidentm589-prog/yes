@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Car Flip Analyzer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <button id="site-menu-button" class="site-menu-button" type="button" aria-expanded="false" aria-controls="site-menu-panel" aria-label="Open menu">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+    <nav id="site-menu-panel" class="site-menu-panel hidden-panel" aria-label="Site menu">
+      <a class="site-menu-link" href="{{ url_for('index') }}">Evaluation Service</a>
+      {% if auth_user %}
+        <a class="site-menu-link" href="{{ url_for('account') }}">Account</a>
+        <a class="site-menu-link" href="{{ url_for('carvana_payout') }}">Carvana Payout</a>
+        <a class="site-menu-link" href="{{ url_for('portfolio') }}">Evaluation Portfolio</a>
+        {% if is_admin_user %}
+          <a class="site-menu-link" href="{{ url_for('admin_overview_page') }}">Engine Overview</a>
+          <a class="site-menu-link" href="{{ url_for('admin_clients_page') }}">Client List</a>
+        {% endif %}
+        <a class="site-menu-link" href="{{ url_for('logout') }}">Log Out</a>
+      {% else %}
+        <a class="site-menu-link" href="{{ url_for('login') }}">Log In</a>
+        <a class="site-menu-link" href="{{ url_for('signup') }}">Sign Up</a>
+      {% endif %}
+    </nav>
+    <div class="account-status-pill">
+      {% if auth_user and account_status %}
+        <span>{{ account_status.tier_label }}</span>
+        <strong>{% if account_status.is_unlimited %}Unlimited{% else %}Credits: {{ account_status.credit_balance }}{% endif %}</strong>
+      {% else %}
+        <span>Account</span>
+        <strong><a href="{{ url_for('login') }}">Log In</a></strong>
+      {% endif %}
+    </div>
+    <a class="sticky-portfolio-button" href="{{ url_for('portfolio') }}">
+      <span aria-hidden="true">❤️</span>
+      <span>Portfolio</span>
+    </a>
+    <button id="software-chat-button" class="software-chat-button" type="button" aria-expanded="false" aria-controls="software-chat-panel" aria-label="Open software assistant">
+      <span aria-hidden="true">👨‍💼</span>
+    </button>
+    <aside id="software-chat-panel" class="software-chat-panel hidden-panel" aria-label="Software assistant">
+      <div class="software-chat-head">
+        <div>
+          <strong>Software Assistant</strong>
+          <p>Ask questions about Car Flip Analyzer or plan the next feature.</p>
+        </div>
+        <button id="software-chat-close" type="button" class="software-chat-close" aria-label="Close software assistant">×</button>
+      </div>
+      <div id="software-chat-messages" class="software-chat-messages"></div>
+      <form id="software-chat-form" class="software-chat-form">
+        <textarea id="software-chat-input" rows="3" placeholder="Ask about the software..."></textarea>
+        <button id="software-chat-send" type="submit" class="button compact-chat-button">Send</button>
+      </form>
+    </aside>
+    <main class="shell">
+      <section class="composer panel">
+        <h1>Car Flip Analyzer</h1>
+        <form id="lookup-form" class="composer-form">
+          <label class="full">
+            <span id="vehicle-input-label" class="input-label-text visually-hidden">Describe the car</span>
+            <textarea
+              id="vehicle-input"
+              name="vehicle_input"
+              rows="3"
+              placeholder="Describe the car or paste a link…"
+            ></textarea>
+          </label>
+          <p id="vehicle-input-helper" class="form-helper hidden-panel">
+            Paste multiple vehicle listings at once. The app will split them into cars, evaluate each one, and rank the best opportunities first.
+          </p>
+          <label id="mileage-field" class="full listing-price-field">
+            <span class="input-label-text">Mileage</span>
+            <input
+              id="vehicle-mileage"
+              name="mileage"
+              type="number"
+              min="0"
+              step="1"
+              inputmode="numeric"
+              required
+              placeholder="Mileage"
+            />
+          </label>
+          <label id="listing-price-field" class="full listing-price-field">
+            <span class="input-label-text">Listing Price</span>
+            <input
+              name="asking_price"
+              type="number"
+              min="0"
+              step="100"
+              placeholder="Listing Price (Optional)"
+            />
+          </label>
+          <section class="choice-shell">
+            <div class="choice-shell-head">
+              <span class="input-label-text">Evaluation Mode</span>
+              <small>Choose the analyzer workflow</small>
+            </div>
+            <div class="choice-grid" id="evaluation-mode-cards">
+              <button class="choice-card is-selected" type="button" data-choice-group="evaluation-mode" data-value="individual">
+                <span class="choice-eyebrow">Standard</span>
+                <strong>Individual Evaluation Model</strong>
+                <small>One vehicle, full comps, focused deal readout.</small>
+              </button>
+              <button class="choice-card" type="button" data-choice-group="evaluation-mode" data-value="bulk">
+                <span class="choice-eyebrow">Batch</span>
+                <strong>Bulk Evaluation Model</strong>
+                <small>Paste a whole queue and rank the best opportunities fast.</small>
+              </button>
+            </div>
+            <select id="evaluation-mode" name="evaluation_mode" class="visually-hidden">
+              <option value="individual" selected>Individual Evaluation Model</option>
+              <option value="bulk">Bulk Evaluation Model</option>
+            </select>
+          </section>
+          <section class="choice-shell addon-shell">
+            <div class="choice-shell-head">
+              <span class="input-label-text">Juicy Add-Ons</span>
+              <small>Premium extras that deepen the analysis</small>
+            </div>
+            <div class="addon-grid">
+              <button class="addon-card" id="detailed-report-card" type="button" data-choice-group="detailed-report" data-value="on">
+                <span class="choice-eyebrow">+1 Credit</span>
+                <strong>Detailed Vehicle Report</strong>
+                <small>Specs, reliability, maintenance, lifespan, and performance context.</small>
+                <span class="addon-state">Optional Add-On</span>
+              </button>
+              <a class="addon-card addon-link-card" href="{{ url_for('carvana_payout') }}">
+                <span class="choice-eyebrow">+1 Credit</span>
+                <strong>Carvana Offer</strong>
+                <small>Run the browser workflow and pull a live Carvana payout into the app.</small>
+                <span class="addon-state">Open Carvana Payout</span>
+              </a>
+            </div>
+            <select id="detailed-vehicle-report" name="detailed_vehicle_report" class="visually-hidden">
+              <option value="off" selected>Off</option>
+              <option value="on">On</option>
+            </select>
+          </section>
+          <div class="actions">
+            <button type="submit" class="button">Estimate Value</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel loading-panel hidden-panel" id="loading-panel" aria-live="polite">
+        <div class="loading-orbital">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+        <p class="deal-kicker">Analyzing Market Data</p>
+        <h2 id="loading-title">Building comps and pricing</h2>
+        <p id="loading-message" class="loading-copy">
+          Building comps, checking pricing, and calculating your potential deal.
+        </p>
+        <p id="loading-progress" class="loading-progress">Approximately 0%</p>
+      </section>
+
+      <section class="panel status-panel hidden-panel" id="results-status-panel">
+        <div class="status-head">
+          <strong>Comp Sources</strong>
+          <span id="session-badge">Ready</span>
+        </div>
+        <p id="status-message">Paste the car details you have and run the estimate.</p>
+        <ul id="status-notes" class="notes"></ul>
+      </section>
+
+      <section class="results-grid hidden-panel" id="results-grid">
+        <article class="panel stat-panel">
+          <div class="results-head">
+            <strong>Vehicle</strong>
+          </div>
+          <div id="source-summary" class="muted">No valuation run yet.</div>
+        </article>
+
+        <article class="panel stat-panel">
+          <div class="results-head">
+            <strong>Range</strong>
+          </div>
+          <div id="overall-range" class="range-list muted">No values yet.</div>
+          <aside id="mileage-price-bands" class="panel mileage-price-panel muted">
+            <div class="results-head mileage-price-head">
+              <strong>Mileage Average</strong>
+            </div>
+            <label class="mileage-price-label">
+              <span>Choose a mileage band</span>
+              <select id="mileage-band-select" disabled>
+                <option>Waiting for valuation...</option>
+              </select>
+            </label>
+            <div id="mileage-band-output" class="mileage-band-output">
+              Mileage-based average listing prices will appear here after a valuation run.
+            </div>
+          </aside>
+        </article>
+      </section>
+
+      <section class="panel hidden-panel" id="results-title-impact-panel">
+        <div class="results-head">
+          <strong>Title Impact</strong>
+        </div>
+        <div id="title-impact" class="range-list muted">
+          Rebuilt-title pricing adjustments will appear here when applicable.
+        </div>
+      </section>
+
+      <section class="panel hidden-panel" id="results-pricing-panel">
+        <div class="results-head">
+          <strong>Listing Price Check</strong>
+        </div>
+        <div id="listing-price-analysis" class="range-list muted">
+          Provide a listing price to see how closely it tracks the market estimate.
+        </div>
+      </section>
+
+      <section class="panel hidden-panel" id="results-comps-panel">
+        <div class="results-head">
+          <strong>Comparable Listings</strong>
+        </div>
+        <div id="comps-toolbar" class="comps-toolbar hidden-panel">
+          <span id="comps-count-label" class="muted">Showing 0 of 0 comps</span>
+          <div class="comps-toolbar-actions">
+            <label class="sort-select-wrap">
+              <span>Sort</span>
+              <select id="comp-sort-select">
+                <option value="price_low">Price: Low → High</option>
+                <option value="price_high">Price: High → Low</option>
+                <option value="closest_mileage" selected>Closest Mileage</option>
+                <option value="mileage_low">Mileage: Low → High</option>
+                <option value="mileage_high">Mileage: High → Low</option>
+              </select>
+            </label>
+            <button id="show-all-comps" type="button" class="ghost-button hidden-panel">
+              Show All
+            </button>
+          </div>
+        </div>
+        <div id="sample-listings" class="sample-listings muted">
+          Live comparable listings will appear here after a valuation run.
+        </div>
+      </section>
+
+      <section class="panel hidden-panel" id="results-conditions-panel">
+        <div class="results-head">
+          <strong>Condition Sweep</strong>
+        </div>
+        <div id="condition-values" class="condition-values muted">
+          Submit a vehicle description and the estimate will appear here.
+        </div>
+      </section>
+
+      <section class="panel hidden-panel" id="results-detailed-report-panel">
+        <div class="results-head">
+          <strong>Detailed Vehicle Report</strong>
+        </div>
+        <div id="detailed-vehicle-report-output" class="detailed-report-wrap muted">
+          Enable Detailed Vehicle Report to generate specs, reliability, ownership, and performance context.
+        </div>
+      </section>
+
+      <section class="panel hidden-panel" id="bulk-results-panel">
+        <div class="results-head">
+          <strong>Bulk Evaluation</strong>
+        </div>
+        <div id="bulk-results-summary" class="bulk-summary-grid muted">
+          Batch summary will appear here after a bulk evaluation run.
+        </div>
+        <div id="bulk-results-grid" class="bulk-results-grid muted">
+          Ranked bulk evaluation results will appear here after processing.
+        </div>
+      </section>
+
+      <section class="deal-transition panel hidden-panel" id="deal-transition-panel">
+        <div class="deal-transition-action dual-actions">
+          <button id="favorite-from-main" type="button" class="proceed-button heart-proceed-button" aria-label="Save this evaluation">
+            <span aria-hidden="true">♥</span>
+            <span>Save to Portfolio</span>
+          </button>
+          <a id="full-evaluation-link" class="proceed-button" href="{{ url_for('full_evaluation') }}">
+            See If This Is a Good Buy &rarr;
+          </a>
+        </div>
+        <div id="main-favorite-status" class="muted"></div>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='nav.js') }}"></script>
+    <script src="{{ url_for('static', filename='software_chat.js') }}"></script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

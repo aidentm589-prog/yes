@@ -1,0 +1,20 @@
+{
+  "itemId": "v1|1234567890|0",
+  "title": "2014 Audi A4 Premium Plus quattro 105,000 miles",
+  "price": {
+    "value": "7495.00",
+    "currency": "USD"
+  },
+  "condition": "Used",
+  "itemWebUrl": "https://www.ebay.com/itm/1234567890",
+  "itemLocation": {
+    "city": "Providence",
+    "stateOrProvince": "RI",
+    "postalCode": "02893",
+    "country": "US"
+  },
+  "image": {
+    "imageUrl": "https://i.ebayimg.com/example.jpg"
+  },
+  "shortDescription": "Clean title sedan"
+}
