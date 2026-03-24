@@ -371,6 +371,7 @@ class SQLiteRepository:
         if not fields:
             return False
         allowed = {
+            "first_name",
             "email",
             "password_hash",
             "role",
@@ -411,6 +412,66 @@ class SQLiteRepository:
             cursor = connection.execute("DELETE FROM user_accounts WHERE id = ?", (user_id,))
             connection.commit()
             return cursor.rowcount > 0
+
+    def list_subscription_tiers(self) -> list[dict[str, Any]]:
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM subscription_tiers ORDER BY tier ASC"
+            ).fetchall()
+        return [self._serialize_subscription_tier_row(row) for row in rows if row]
+
+    def get_subscription_tier(self, tier: int) -> dict[str, Any] | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM subscription_tiers WHERE tier = ?",
+                (tier,),
+            ).fetchone()
+        return self._serialize_subscription_tier_row(row)
+
+    def upsert_subscription_tier(
+        self,
+        *,
+        tier: int,
+        display_name: str,
+        credits_granted: int,
+        monthly_price: str,
+        yearly_price: str,
+        marketing_copy: str,
+        has_bulk_access: bool,
+        is_unlimited: bool,
+    ) -> dict[str, Any]:
+        now = _utc_now_iso()
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO subscription_tiers
+                (tier, display_name, credits_granted, monthly_price, yearly_price, marketing_copy, has_bulk_access, is_unlimited, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(tier) DO UPDATE SET
+                    display_name = excluded.display_name,
+                    credits_granted = excluded.credits_granted,
+                    monthly_price = excluded.monthly_price,
+                    yearly_price = excluded.yearly_price,
+                    marketing_copy = excluded.marketing_copy,
+                    has_bulk_access = excluded.has_bulk_access,
+                    is_unlimited = excluded.is_unlimited,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    tier,
+                    display_name,
+                    credits_granted,
+                    monthly_price,
+                    yearly_price,
+                    marketing_copy,
+                    1 if has_bulk_access else 0,
+                    1 if is_unlimited else 0,
+                    now,
+                    now,
+                ),
+            )
+            connection.commit()
+        return self.get_subscription_tier(tier) or {}
 
     def create_carvana_payout_job(self, user_id: int | None, payload: dict[str, Any]) -> int:
         now = _utc_now_iso()
@@ -623,6 +684,22 @@ class SQLiteRepository:
             "last_free_credit_at": row["last_free_credit_at"],
             "last_login_at": row["last_login_at"],
             "status": row["status"],
+        }
+
+    def _serialize_subscription_tier_row(self, row: sqlite3.Row | None) -> dict[str, Any] | None:
+        if not row:
+            return None
+        return {
+            "tier": int(row["tier"]),
+            "display_name": str(row["display_name"] or ""),
+            "credits_granted": int(row["credits_granted"] or 0),
+            "monthly_price": str(row["monthly_price"] or ""),
+            "yearly_price": str(row["yearly_price"] or ""),
+            "marketing_copy": str(row["marketing_copy"] or ""),
+            "has_bulk_access": bool(row["has_bulk_access"]),
+            "is_unlimited": bool(row["is_unlimited"]),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
         }
 
     def _serialize_carvana_payout_job(self, row: sqlite3.Row | None) -> dict[str, Any] | None:

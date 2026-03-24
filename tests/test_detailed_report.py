@@ -4,7 +4,7 @@ import unittest
 
 from comp_engine.detailed_report import DetailedVehicleReportService
 from comp_engine.http import HttpClient
-from comp_engine.models import VehicleQuery
+from comp_engine.models import NormalizedListing, VehicleQuery
 
 
 class DetailedVehicleReportTests(unittest.TestCase):
@@ -35,6 +35,56 @@ class DetailedVehicleReportTests(unittest.TestCase):
         self.assertIn(report["status"], {"complete", "partial"})
         self.assertTrue(any(section["title"] == "Vehicle Specs" for section in report["sections"]))
         self.assertTrue(report["sports_car"])
+
+    def test_comp_consensus_drives_hard_specs(self) -> None:
+        service = DetailedVehicleReportService(HttpClient())
+        query = VehicleQuery(year=2018, make="BMW", model="3 Series", trim="330i", mileage=60000)
+        listings = [
+            NormalizedListing(
+                source="autodev",
+                source_listing_id="1",
+                source_label="auto.dev",
+                url="https://example.com/1",
+                fetched_at="2026-01-01T00:00:00+00:00",
+                engine="2.0L Turbo I4",
+                transmission="Automatic",
+                drivetrain="RWD",
+                fuel_type="Gasoline",
+                spec_confidence=0.95,
+            ),
+            NormalizedListing(
+                source="autodev",
+                source_listing_id="2",
+                source_label="auto.dev",
+                url="https://example.com/2",
+                fetched_at="2026-01-01T00:00:00+00:00",
+                engine="2.0L Turbo I4",
+                transmission="Automatic",
+                drivetrain="RWD",
+                fuel_type="Gasoline",
+                spec_confidence=0.88,
+            ),
+            NormalizedListing(
+                source="craigslist",
+                source_listing_id="3",
+                source_label="Craigslist",
+                url="https://example.com/3",
+                fetched_at="2026-01-01T00:00:00+00:00",
+                engine="3.0L I6",
+                transmission="Manual",
+                drivetrain="AWD",
+                fuel_type="Gasoline",
+                spec_confidence=0.35,
+            ),
+        ]
+
+        report = service.get_detailed_vehicle_report(query, {"overall_range": {"market_value": "$24,000"}}, listings)
+        specs = next(section for section in report["sections"] if section["title"] == "Vehicle Specs")
+        values = {item["label"]: item["value"] for item in specs["items"]}
+
+        self.assertEqual(values.get("Engine Spec"), "2.0L Turbo I4")
+        self.assertEqual(values.get("Transmission Spec"), "Automatic")
+        self.assertEqual(values.get("Drivetrain"), "RWD")
 
 
 if __name__ == "__main__":

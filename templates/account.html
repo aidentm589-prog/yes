@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
   </head>
   <body>
+    {% include "_top_bar.html" %}
     <main class="shell shell-narrow">
       <section class="composer panel full-evaluation-hero">
         <p class="deal-kicker">My Account</p>
@@ -59,5 +60,7 @@
         </div>
       </section>
     </main>
+    <script src="{{ url_for('static', filename='nav.js') }}"></script>
+    <script src="{{ url_for('static', filename='software_chat.js') }}"></script>
   </body>
 </html>

@@ -12,6 +12,10 @@ const profitTableBody = document.getElementById("profit-table-body");
 const favoriteEvaluationButton = document.getElementById("favorite-evaluation-button");
 const favoriteEvaluationStatus = document.getElementById("favorite-evaluation-status");
 const accountStatusPill = document.querySelector(".account-status-pill");
+const topbarCreditValue = document.getElementById("topbar-credit-value");
+const topbarTierLabel = document.getElementById("topbar-tier-label");
+const topbarTierDefault = document.getElementById("topbar-tier-default");
+const topbarTierHover = document.getElementById("topbar-tier-hover");
 const EVALUATION_CACHE_KEY = "car-flip-analyzer:latest-evaluation";
 
 const RISK_MULTIPLIERS = {
@@ -40,19 +44,46 @@ function escapeHtml(value) {
 }
 
 function renderAccountStatus(status) {
-  if (!accountStatusPill || !status) {
+  if (!status) {
     return;
   }
+  if (accountStatusPill) {
+    accountStatusPill.innerHTML = `
+      <span>Account</span>
+      <strong><a href="/account">${escapeHtml(status.first_name || "Open")}</a></strong>
+    `;
+  }
+  if (topbarCreditValue) {
+    topbarCreditValue.textContent = status.is_unlimited ? "Unlimited" : `${Number(status.credit_balance || 0)}`;
+  }
+  if (topbarTierLabel) {
+    topbarTierLabel.textContent = status.tier_label || "Guest Access";
+  }
+  if (topbarTierDefault) {
+    topbarTierDefault.textContent = "Current subscription access";
+  }
+  if (topbarTierHover) {
+    topbarTierHover.textContent = tierHoverCopy(status);
+  }
+}
 
-  const label = status.tier_label || "Account";
-  const value = status.is_unlimited
-    ? "Unlimited"
-    : `Credits: ${Number(status.credit_balance || 0)}`;
-
-  accountStatusPill.innerHTML = `
-    <span>${escapeHtml(label)}</span>
-    <strong>${escapeHtml(value)}</strong>
-  `;
+function tierHoverCopy(status) {
+  if (!status) {
+    return "Sign up to start at Tier 1 and unlock more evaluation power.";
+  }
+  if (status.tier === 1) {
+    return "Upgrade to Tier 2 for Batch Model access and 50 credits.";
+  }
+  if (status.tier === 2) {
+    return "Upgrade to Tier 3 for 500 credits and deeper deal flow.";
+  }
+  if (status.tier === 3) {
+    return "Upgrade to Tier 4 for unlimited usage.";
+  }
+  if (status.tier === 4) {
+    return "Unlimited usage unlocked across the platform.";
+  }
+  return "Upgrade your access to unlock more evaluation power.";
 }
 
 function buildEvaluationCacheFingerprint(vehicleInput, mileage, rebuiltTitle) {
@@ -135,25 +166,11 @@ function cleanTrim(value) {
 }
 
 function setAutoFinalBuyPriceFromSafeBuy() {
-  if (!Number.isFinite(currentSafeBuyPrice) || currentSafeBuyPrice <= 0) {
+  runFinalBuyCalculation().catch((error) => {
     if (autoFinalBuyPriceStatus) {
-      autoFinalBuyPriceStatus.textContent = "Safe buy price is unavailable for this evaluation.";
+      autoFinalBuyPriceStatus.textContent = error instanceof Error ? error.message : "Unable to calculate buy target.";
     }
-    return;
-  }
-
-  const calculatedBuyPrice = Math.max(0, Math.round((currentSafeBuyPrice * 0.85) / 50) * 50);
-  finalBuyPriceInput.value = String(calculatedBuyPrice);
-  renderProfitTable();
-  if (favoriteEvaluationButton) {
-    favoriteEvaluationButton.classList.remove("hidden-panel");
-  }
-  if (autoFinalBuyPriceStatus) {
-    autoFinalBuyPriceStatus.textContent = `Final buy price calculated at ${formatMoney(calculatedBuyPrice)} (15% below safe buy price).`;
-  }
-  if (favoriteEvaluationStatus) {
-    favoriteEvaluationStatus.textContent = "";
-  }
+  });
 }
 
 function riskLabelFromConfidence(confidence) {
@@ -318,7 +335,7 @@ function applyEvaluationPayload(payload) {
   }
   if (autoFinalBuyPriceStatus) {
     autoFinalBuyPriceStatus.textContent = suggestedBuy
-      ? "Want help? We can calculate your final buy price at 15% below the safe buy price."
+      ? "Calculate for 1 Credit"
       : "Safe buy price is unavailable for this evaluation.";
   }
   renderTitleImpact(payload.title_adjustment);
@@ -331,6 +348,52 @@ function applyEvaluationPayload(payload) {
   }
 
   renderProfitTable();
+}
+
+async function runFinalBuyCalculation() {
+  if (!currentEvaluation) {
+    throw new Error("Run a valuation before using this add-on.");
+  }
+  if (autoFinalBuyPriceButton) {
+    autoFinalBuyPriceButton.disabled = true;
+  }
+  if (autoFinalBuyPriceStatus) {
+    autoFinalBuyPriceStatus.textContent = "Calculating premium buy target...";
+  }
+  try {
+    const response = await fetch("/api/final-buy-offer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ evaluation: currentEvaluation }),
+    });
+    const payload = await response.json();
+    renderAccountStatus(payload.account_status);
+    if (!payload.ok) {
+      throw new Error(payload.message || "Unable to calculate premium buy target.");
+    }
+    const lowestBuyValue = parseMoney(payload.lowest_buy_point);
+    finalBuyPriceInput.value = lowestBuyValue ? String(lowestBuyValue) : "";
+    renderProfitTable();
+    if (favoriteEvaluationButton) {
+      favoriteEvaluationButton.classList.toggle("hidden-panel", !lowestBuyValue);
+    }
+    if (suggestedBuyPrice) {
+      suggestedBuyPrice.innerHTML = `
+        <strong>Starting Offer:</strong> ${escapeHtml(payload.starting_offer || "")}<br />
+        <strong>Lowest Buying Point:</strong> ${escapeHtml(payload.lowest_buy_point || "")}
+      `;
+    }
+    if (autoFinalBuyPriceStatus) {
+      autoFinalBuyPriceStatus.textContent = "Premium buy target calculated and credits updated.";
+    }
+    if (favoriteEvaluationStatus) {
+      favoriteEvaluationStatus.textContent = "";
+    }
+  } finally {
+    if (autoFinalBuyPriceButton) {
+      autoFinalBuyPriceButton.disabled = false;
+    }
+  }
 }
 
 function buildFullEvaluationSnapshot() {

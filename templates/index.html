@@ -13,98 +13,9 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
   </head>
   <body>
-    <button id="site-menu-button" class="site-menu-button" type="button" aria-expanded="false" aria-controls="site-menu-panel" aria-label="Open menu">
-      <span></span>
-      <span></span>
-      <span></span>
-    </button>
-    <nav id="site-menu-panel" class="site-menu-panel hidden-panel" aria-label="Site menu">
-      <a class="site-menu-link" href="{{ url_for('index') }}">Evaluation Service</a>
-      {% if auth_user %}
-        <a class="site-menu-link" href="{{ url_for('account') }}">Account</a>
-        <a class="site-menu-link" href="{{ url_for('carvana_payout') }}">Carvana Payout</a>
-        <a class="site-menu-link" href="{{ url_for('portfolio') }}">Evaluation Portfolio</a>
-        {% if is_admin_user %}
-          <a class="site-menu-link" href="{{ url_for('admin_overview_page') }}">Engine Overview</a>
-          <a class="site-menu-link" href="{{ url_for('admin_clients_page') }}">Client List</a>
-        {% endif %}
-        <a class="site-menu-link" href="{{ url_for('logout') }}">Log Out</a>
-      {% else %}
-        <a class="site-menu-link" href="{{ url_for('login') }}">Log In</a>
-        <a class="site-menu-link" href="{{ url_for('signup') }}">Sign Up</a>
-      {% endif %}
-    </nav>
-    <div class="account-status-pill">
-      {% if auth_user and account_status %}
-        <span>{{ account_status.tier_label }}</span>
-        <strong>{% if account_status.is_unlimited %}Unlimited{% else %}Credits: {{ account_status.credit_balance }}{% endif %}</strong>
-      {% else %}
-        <span>Account</span>
-        <div class="account-status-links">
-          <strong><a href="{{ url_for('login') }}">Log In</a></strong>
-          <strong><a href="{{ url_for('signup') }}">Sign Up</a></strong>
-        </div>
-      {% endif %}
-    </div>
-    <a class="sticky-portfolio-button" href="{{ url_for('portfolio') }}">
-      <span aria-hidden="true">❤️</span>
-      <span>Portfolio</span>
-    </a>
-    <button id="software-chat-button" class="software-chat-button" type="button" aria-expanded="false" aria-controls="software-chat-panel" aria-label="Open software assistant">
-      <span aria-hidden="true">👨‍💼</span>
-    </button>
-    <aside id="software-chat-panel" class="software-chat-panel hidden-panel" aria-label="Software assistant">
-      <div class="software-chat-head">
-        <div>
-          <strong>Software Assistant</strong>
-          <p>Ask questions about Car Flip Analyzer or plan the next feature.</p>
-        </div>
-        <button id="software-chat-close" type="button" class="software-chat-close" aria-label="Close software assistant">×</button>
-      </div>
-      <div id="software-chat-messages" class="software-chat-messages"></div>
-      <form id="software-chat-form" class="software-chat-form">
-        <textarea id="software-chat-input" rows="3" placeholder="Ask about the software..."></textarea>
-        <button id="software-chat-send" type="submit" class="button compact-chat-button">Send</button>
-      </form>
-    </aside>
+    {% include "_top_bar.html" %}
     <main class="shell">
       <section class="composer panel">
-        <div class="composer-status-strip">
-          <div class="composer-credit-chip" id="composer-credit-chip">
-            <span class="composer-credit-icon" aria-hidden="true">$</span>
-            <div class="composer-credit-copy">
-              <span>Credits Remaining</span>
-              <strong id="composer-credit-value">
-                {% if auth_user and account_status %}
-                  {% if account_status.is_unlimited %}Unlimited{% else %}{{ account_status.credit_balance }}{% endif %}
-                {% else %}
-                  --
-                {% endif %}
-              </strong>
-            </div>
-          </div>
-          <div class="composer-tier-banner" id="composer-tier-banner">
-            <span class="composer-tier-kicker">Current Tier</span>
-            <strong id="composer-tier-value">
-              {% if auth_user and account_status %}
-                {{ account_status.tier_label }}
-              {% else %}
-                Guest Access
-              {% endif %}
-            </strong>
-            <small id="composer-tier-message">
-              {% if auth_user and account_status %}
-                {% if account_status.has_bulk_access %}
-                  Bulk evaluation and premium workflows are available.
-                {% else %}
-                  Advance your tier to unlock bulk evaluation and higher-volume deal flow.
-                {% endif %}
-              {% else %}
-                Sign up to start at Tier 1 and begin unlocking more evaluation power.
-              {% endif %}
-            </small>
-          </div>
-        </div>
         <h1>Car Flip Analyzer</h1>
         <form id="lookup-form" class="composer-form">
           <label class="full">
@@ -154,12 +65,12 @@
                 <small>One vehicle, full comps, focused deal readout.</small>
               </button>
               <button
-                class="choice-card {% if auth_user and account_status and not account_status.has_bulk_access %}is-locked{% endif %}"
+                class="choice-card {% if (not auth_user) or (account_status and not account_status.has_bulk_access) %}is-locked{% endif %}"
                 type="button"
                 data-choice-group="evaluation-mode"
                 data-value="bulk"
                 data-lock-message="Your subscription level does not qualify for Bulk Evaluation yet."
-                {% if auth_user and account_status and not account_status.has_bulk_access %}aria-disabled="true"{% endif %}
+                {% if (not auth_user) or (account_status and not account_status.has_bulk_access) %}aria-disabled="true"{% endif %}
               >
                 <span class="choice-eyebrow">Batch</span>
                 <strong>Bulk Evaluation Model</strong>

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Subscription Management | Car Flip Analyzer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    {% include "_top_bar.html" %}
+    <main class="shell shell-narrow">
+      <section class="composer panel full-evaluation-hero">
+        <p class="deal-kicker">Admin</p>
+        <h1>Subscription Management</h1>
+        <p class="full-evaluation-copy">
+          Edit live plan names, credits, pricing copy, and access rules. Changes appear immediately across accounts and the public plans page.
+        </p>
+      </section>
+
+      <section class="panel">
+        <div class="results-head">
+          <strong>Plan Controls</strong>
+          <a class="proceed-button secondary compact-button" href="{{ url_for('subscriptions') }}">Open Public Plans</a>
+        </div>
+        <div id="admin-subscriptions" class="admin-tier-grid muted">
+          Loading subscription controls...
+        </div>
+      </section>
+    </main>
+    <script src="{{ url_for('static', filename='nav.js') }}"></script>
+    <script src="{{ url_for('static', filename='software_chat.js') }}"></script>
+    <script src="{{ url_for('static', filename='admin.js') }}"></script>
+  </body>
+</html>

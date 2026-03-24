@@ -122,24 +122,25 @@ class DetailedVehicleReportService:
         result: dict[str, Any],
         listings: list[NormalizedListing],
     ) -> dict[str, Any]:
-        listing = self._best_spec_listing(listings)
-        engine_spec = query.engine or (listing.engine if listing else "")
-        transmission_spec = query.transmission or (listing.transmission if listing else "")
-        drivetrain = query.drivetrain or (listing.drivetrain if listing else "")
-        fuel_type = query.fuel_type or (listing.fuel_type if listing else "")
+        consensus = self._resolve_comp_specs(listings)
+        engine_spec = consensus.get("engine_spec") or query.engine or ""
+        transmission_spec = consensus.get("transmission_spec") or query.transmission or ""
+        drivetrain = consensus.get("drivetrain") or query.drivetrain or ""
+        fuel_type = consensus.get("fuel_type") or query.fuel_type or ""
+        body_style = consensus.get("body_style") or query.body_style or ""
         base = {
             "year": query.year,
             "make": query.make,
             "model": query.model,
             "trim": query.trim,
-            "body_style": query.body_style or (listing.body_style if listing else ""),
+            "body_style": body_style,
             "engine_spec": engine_spec,
             "transmission_spec": transmission_spec,
             "drivetrain": drivetrain,
             "fuel_type": fuel_type,
             "market_value": ((result.get("overall_range") or {}).get("market_value") or ""),
             "msrp": "",
-            "mpg": "",
+            "mpg": consensus.get("mpg") or "",
             "aspiration": self._infer_aspiration(engine_spec, query.trim),
             "common_problems": self._fallback_common_problems(query, engine_spec),
             "reliability_rating": self._fallback_reliability(query),
@@ -150,7 +151,8 @@ class DetailedVehicleReportService:
             "torque": "",
             "zero_to_sixty": "",
             "sports_car": self.is_sports_car(query, {"engine_spec": engine_spec}),
-            "source": "fallback",
+            "source": consensus.get("source") or "fallback",
+            "spec_confidence": consensus.get("spec_confidence", 0.0),
         }
         return base
 
@@ -190,8 +192,19 @@ class DetailedVehicleReportService:
 
     def _merge_report(self, base: dict[str, Any], enriched: dict[str, Any]) -> dict[str, Any]:
         merged = dict(base)
+        hard_spec_keys = {
+            "engine_spec",
+            "transmission_spec",
+            "drivetrain",
+            "fuel_type",
+            "body_style",
+            "mpg",
+            "aspiration",
+        }
         for key, value in enriched.items():
             if value in ("", None, [], {}):
+                continue
+            if key in hard_spec_keys and str(base.get(key) or "").strip() and float(base.get("spec_confidence") or 0.0) >= 0.65:
                 continue
             merged[key] = value
         merged["sports_car"] = bool(merged.get("sports_car") or self.is_sports_car(
@@ -205,6 +218,89 @@ class DetailedVehicleReportService:
             merged,
         ))
         return merged
+
+    def _resolve_comp_specs(self, listings: list[NormalizedListing]) -> dict[str, Any]:
+        if not listings:
+            return {}
+        engine = self._consensus_value(listings, "engine", self._normalize_engine_text)
+        transmission = self._consensus_value(listings, "transmission", self._normalize_plain_spec)
+        drivetrain = self._consensus_value(listings, "drivetrain", self._normalize_plain_spec)
+        fuel_type = self._consensus_value(listings, "fuel_type", self._normalize_plain_spec)
+        body_style = self._consensus_value(listings, "body_style", self._normalize_plain_spec)
+        mpg = self._consensus_mpg(listings)
+        strengths = [value["confidence"] for value in (engine, transmission, drivetrain, fuel_type, body_style) if value["value"]]
+        return {
+            "engine_spec": engine["value"],
+            "transmission_spec": transmission["value"],
+            "drivetrain": drivetrain["value"],
+            "fuel_type": fuel_type["value"],
+            "body_style": body_style["value"],
+            "mpg": mpg,
+            "spec_confidence": max(strengths) if strengths else 0.0,
+            "source": "comp_consensus" if strengths else "fallback",
+        }
+
+    def _consensus_value(
+        self,
+        listings: list[NormalizedListing],
+        field_name: str,
+        normalizer,
+    ) -> dict[str, Any]:
+        scores: dict[str, float] = {}
+        display: dict[str, str] = {}
+        total = 0.0
+        for listing in listings:
+            raw_value = getattr(listing, field_name, "")
+            normalized = normalizer(raw_value)
+            if not normalized:
+                continue
+            weight = max(0.4, float(getattr(listing, "spec_confidence", 0.0) or 0.0))
+            weight += max(0.0, float(getattr(listing, "relevance_score", 0.0) or 0.0)) * 0.5
+            weight += 0.08 * float(listing.completeness_score())
+            total += weight
+            scores[normalized] = scores.get(normalized, 0.0) + weight
+            if normalized not in display or len(str(raw_value).strip()) > len(display[normalized]):
+                display[normalized] = str(raw_value).strip()
+        if not scores or total <= 0:
+            return {"value": "", "confidence": 0.0}
+        winner = max(scores.items(), key=lambda item: item[1])[0]
+        confidence = min(1.0, scores[winner] / total)
+        return {"value": display.get(winner, winner), "confidence": confidence}
+
+    def _consensus_mpg(self, listings: list[NormalizedListing]) -> str:
+        values = []
+        for listing in listings:
+            raw = listing.raw_payload if isinstance(listing.raw_payload, dict) else {}
+            candidates = [
+                raw.get("mpg"),
+                raw.get("combined_mpg"),
+                raw.get("highway_mpg"),
+                listing.metadata.get("mpg") if isinstance(listing.metadata, dict) else "",
+            ]
+            for candidate in candidates:
+                if not candidate:
+                    continue
+                text = str(candidate).strip()
+                if text:
+                    values.append(text)
+                    break
+        if not values:
+            return ""
+        counts: dict[str, int] = {}
+        for value in values:
+            counts[value] = counts.get(value, 0) + 1
+        return max(counts.items(), key=lambda item: item[1])[0]
+
+    def _normalize_engine_text(self, value: Any) -> str:
+        text = str(value or "").strip().lower()
+        text = re.sub(r"\s+", " ", text)
+        text = text.replace("liter", "l").replace(" litre", "l")
+        text = text.replace("automatic transmission", "automatic")
+        return text
+
+    def _normalize_plain_spec(self, value: Any) -> str:
+        text = str(value or "").strip().lower()
+        return re.sub(r"\s+", " ", text)
 
     def _best_spec_listing(self, listings: list[NormalizedListing]) -> NormalizedListing | None:
         if not listings:

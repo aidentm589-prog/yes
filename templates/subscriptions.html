@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Subscriptions | Car Flip Analyzer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    {% include "_top_bar.html" %}
+    <main class="shell shell-narrow">
+      <section class="composer panel subscriptions-hero">
+        <p class="deal-kicker">Subscriptions</p>
+        <h1>Choose Your Deal Flow</h1>
+        <p class="full-evaluation-copy">
+          Compare plans built for scouting, batching, and unlimited operation. Toggle monthly or yearly to preview how the packages stack up.
+        </p>
+        <div class="billing-toggle" id="billing-toggle">
+          <button type="button" class="billing-choice is-active" data-billing="monthly">Monthly</button>
+          <button type="button" class="billing-choice" data-billing="yearly">Yearly</button>
+        </div>
+      </section>
+
+      <section class="subscriptions-grid" id="subscriptions-grid">
+        {% for tier in subscription_tiers %}
+          <article class="subscription-card" data-tier="{{ tier.tier }}">
+            <p class="subscription-tier">Tier {{ tier.tier }}</p>
+            <h2>{{ tier.display_name }}</h2>
+            <div class="subscription-price">
+              <strong data-price-monthly="{{ tier.monthly_price }}" data-price-yearly="{{ tier.yearly_price }}">{{ tier.monthly_price }}</strong>
+              <span>/ month</span>
+            </div>
+            <p class="subscription-copy">{{ tier.marketing_copy }}</p>
+            <div class="subscription-stats">
+              <div>
+                <span>Credits</span>
+                <strong>{% if tier.is_unlimited %}Unlimited{% else %}{{ tier.credits_granted }}{% endif %}</strong>
+              </div>
+              <div>
+                <span>Bulk</span>
+                <strong>{{ "Enabled" if tier.has_bulk_access else "Blocked" }}</strong>
+              </div>
+            </div>
+            <a class="button compact-button" href="{% if auth_user %}{{ url_for('account') }}{% else %}{{ url_for('signup') }}{% endif %}">
+              {% if auth_user %}Manage Access{% else %}Create Account{% endif %}
+            </a>
+          </article>
+        {% endfor %}
+      </section>
+    </main>
+    <script src="{{ url_for('static', filename='nav.js') }}"></script>
+    <script src="{{ url_for('static', filename='software_chat.js') }}"></script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

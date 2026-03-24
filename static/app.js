@@ -52,9 +52,10 @@ const mainFavoriteStatus = document.getElementById("main-favorite-status");
 const stickyPortfolioButton = document.querySelector(".sticky-portfolio-button");
 const compSortSelect = document.getElementById("comp-sort-select");
 const accountStatusPill = document.querySelector(".account-status-pill");
-const composerCreditValue = document.getElementById("composer-credit-value");
-const composerTierValue = document.getElementById("composer-tier-value");
-const composerTierMessage = document.getElementById("composer-tier-message");
+const topbarCreditValue = document.getElementById("topbar-credit-value");
+const topbarTierLabel = document.getElementById("topbar-tier-label");
+const topbarTierDefault = document.getElementById("topbar-tier-default");
+const topbarTierHover = document.getElementById("topbar-tier-hover");
 const DEFAULT_VISIBLE_COMPS = 6;
 const EVALUATION_CACHE_KEY = "car-flip-analyzer:latest-evaluation";
 
@@ -65,6 +66,13 @@ let currentMainEvaluation = null;
 let loadingProgressTimer = null;
 let loadingProgressValue = 0;
 let currentCompSort = "closest_mileage";
+let loadingMessageTimer = null;
+const loadingPhases = [
+  "Scraping comps from live sources",
+  "Normalizing listings and filtering noise",
+  "Comparing mileage and trim alignment",
+  "Analyzing numbers and shaping the deal",
+];
 
 const vehicleFields = [
   ["year", "Year"],
@@ -89,35 +97,57 @@ function escapeHtml(value) {
 }
 
 function renderAccountStatus(status) {
-  if (!accountStatusPill || !status) {
+  if (!accountStatusPill && !topbarCreditValue && !topbarTierLabel) {
     return;
   }
 
-  const label = status.tier_label || "Account";
-  const value = status.is_unlimited
-    ? "Unlimited"
-    : `Credits: ${Number(status.credit_balance || 0)}`;
+  const label = status?.tier_label || "Guest Access";
   const creditOnlyValue = status.is_unlimited
     ? "Unlimited"
-    : `${Number(status.credit_balance || 0)}`;
+    : `${Number(status?.credit_balance || 0)}`;
 
-  accountStatusPill.innerHTML = `
-    <span>${escapeHtml(label)}</span>
-    <strong>${escapeHtml(value)}</strong>
-  `;
+  if (accountStatusPill && status) {
+    const accountText = status.first_name || "Open";
+    accountStatusPill.innerHTML = `
+      <span>Account</span>
+      <strong><a href="/account">${escapeHtml(accountText)}</a></strong>
+    `;
+  }
 
-  if (composerCreditValue) {
-    composerCreditValue.textContent = creditOnlyValue;
+  if (topbarCreditValue) {
+    topbarCreditValue.textContent = creditOnlyValue;
   }
-  if (composerTierValue) {
-    composerTierValue.textContent = label;
+  if (topbarTierLabel) {
+    topbarTierLabel.textContent = label;
   }
-  if (composerTierMessage) {
-    composerTierMessage.textContent = status.has_bulk_access
-      ? "Bulk evaluation and premium workflows are available."
-      : "Advance your tier to unlock bulk evaluation and higher-volume deal flow.";
+  if (topbarTierDefault) {
+    topbarTierDefault.textContent = status
+      ? "Current subscription access"
+      : "Explore the analyzer with guest access.";
+  }
+  if (topbarTierHover) {
+    topbarTierHover.textContent = tierHoverCopy(status);
   }
   syncBulkLockState(status);
+}
+
+function tierHoverCopy(status) {
+  if (!status) {
+    return "Sign up to start at Tier 1 and unlock more evaluation power.";
+  }
+  if (status.tier === 1) {
+    return "Upgrade to Tier 2 for Batch Model access and 50 credits.";
+  }
+  if (status.tier === 2) {
+    return "Upgrade to Tier 3 for 500 credits and deeper deal flow.";
+  }
+  if (status.tier === 3) {
+    return "Upgrade to Tier 4 for unlimited usage.";
+  }
+  if (status.tier === 4) {
+    return "Unlimited usage unlocked across the platform.";
+  }
+  return "Upgrade your access to unlock more evaluation power.";
 }
 
 function buildEvaluationCacheFingerprint(payload = {}) {
@@ -204,10 +234,10 @@ function setChoiceCardSelection(groupName, value) {
 
 function syncBulkLockState(status) {
   const bulkCard = evaluationModeCards?.querySelector('[data-value="bulk"]');
-  if (!bulkCard || !status) {
+  if (!bulkCard) {
     return;
   }
-  const isLocked = !status.is_unlimited && !status.has_bulk_access;
+  const isLocked = !status || (!status.is_unlimited && !status.has_bulk_access);
   bulkCard.classList.toggle("is-locked", isLocked);
   bulkCard.setAttribute("aria-disabled", isLocked ? "true" : "false");
 }
@@ -410,7 +440,65 @@ function renderVehicleBrief(details, fallback) {
   }
 
   sourceSummary.classList.remove("muted");
-  sourceSummary.innerHTML = `<div class="vehicle-brief">${rows.join("")}</div>`;
+  const referenceVehicle = extractReferenceVehicleMedia(currentMainEvaluation);
+  sourceSummary.innerHTML = `
+    <div class="vehicle-brief">
+      ${rows.join("")}
+      ${renderReferenceVehicleCard(referenceVehicle)}
+    </div>
+  `;
+}
+
+function extractReferenceVehicleMedia(evaluation) {
+  const matched = Array.isArray(evaluation?.matched_comps) ? evaluation.matched_comps : [];
+  for (const listing of matched) {
+    const image = Array.isArray(listing?.image_urls)
+      ? listing.image_urls.find((value) => /^https?:\/\//.test(String(value || "")))
+      : "";
+    if (image) {
+      return {
+        url: image,
+        source: listing.source_label || listing.source || "Matched comp",
+      };
+    }
+  }
+
+  const sample = Array.isArray(evaluation?.sample_listings) ? evaluation.sample_listings : [];
+  for (const listing of sample) {
+    const image = Array.isArray(listing?.image_urls)
+      ? listing.image_urls.find((value) => /^https?:\/\//.test(String(value || "")))
+      : "";
+    if (image) {
+      return {
+        url: image,
+        source: listing.dealer || listing.source_label || "Sample comp",
+      };
+    }
+  }
+
+  return null;
+}
+
+function renderReferenceVehicleCard(referenceVehicle) {
+  if (!referenceVehicle?.url) {
+    return `
+      <div class="vehicle-reference-card">
+        <div class="vehicle-reference-frame">
+          <div class="vehicle-reference-placeholder">
+            A matching comp photo was not available for this run, but the evaluation is still complete.
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="vehicle-reference-card">
+      <div class="vehicle-reference-frame">
+        <img src="${escapeHtml(referenceVehicle.url)}" alt="Reference vehicle" loading="lazy" />
+      </div>
+    </div>
+  `;
 }
 
 function renderOverallRange(data) {
@@ -1222,11 +1310,18 @@ function cleanVehicleTitle(parsedDetails = {}, fallback = "") {
 function startLoadingProgress() {
   const progressLabel = document.getElementById("loading-progress");
   loadingProgressValue = 6;
+  let phaseIndex = 0;
   if (progressLabel) {
     progressLabel.textContent = `Approximately ${loadingProgressValue}%`;
   }
+  if (loadingMessage) {
+    loadingMessage.textContent = loadingPhases[0];
+  }
   if (loadingProgressTimer) {
     window.clearInterval(loadingProgressTimer);
+  }
+  if (loadingMessageTimer) {
+    window.clearInterval(loadingMessageTimer);
   }
   loadingProgressTimer = window.setInterval(() => {
     loadingProgressValue = Math.min(92, loadingProgressValue + (loadingProgressValue < 40 ? 9 : loadingProgressValue < 70 ? 5 : 2));
@@ -1234,6 +1329,12 @@ function startLoadingProgress() {
       progressLabel.textContent = `Approximately ${loadingProgressValue}%`;
     }
   }, 650);
+  loadingMessageTimer = window.setInterval(() => {
+    phaseIndex = (phaseIndex + 1) % loadingPhases.length;
+    if (loadingMessage) {
+      loadingMessage.textContent = loadingPhases[phaseIndex];
+    }
+  }, 1500);
 }
 
 function stopLoadingProgress() {
@@ -1242,9 +1343,41 @@ function stopLoadingProgress() {
     window.clearInterval(loadingProgressTimer);
     loadingProgressTimer = null;
   }
+  if (loadingMessageTimer) {
+    window.clearInterval(loadingMessageTimer);
+    loadingMessageTimer = null;
+  }
   if (progressLabel) {
     progressLabel.textContent = "Approximately 100%";
   }
+}
+
+function initBillingToggle() {
+  const toggle = document.getElementById("billing-toggle");
+  if (!toggle) {
+    return;
+  }
+  const buttons = Array.from(toggle.querySelectorAll(".billing-choice"));
+  const applyBilling = (mode) => {
+    buttons.forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.billing === mode);
+    });
+    document.querySelectorAll("[data-price-monthly]").forEach((node) => {
+      const price = mode === "yearly" ? node.getAttribute("data-price-yearly") : node.getAttribute("data-price-monthly");
+      node.textContent = price || "";
+    });
+    document.querySelectorAll(".subscription-price span").forEach((node) => {
+      node.textContent = mode === "yearly" ? "/ year" : "/ month";
+    });
+  };
+  toggle.addEventListener("click", (event) => {
+    const button = event.target.closest(".billing-choice");
+    if (!button) {
+      return;
+    }
+    applyBilling(button.dataset.billing || "monthly");
+  });
+  applyBilling("monthly");
 }
 
 async function saveMainEvaluationToPortfolio() {
@@ -1295,7 +1428,7 @@ async function saveMainEvaluationToPortfolio() {
   }
 }
 
-form.addEventListener("submit", async (event) => {
+form?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const mileageInput = document.getElementById("vehicle-mileage");
   const bulkMode = isBulkMode();
@@ -1477,6 +1610,8 @@ if (compSortSelect) {
   });
 }
 
+initBillingToggle();
+
 favoriteFromMain?.addEventListener("click", saveMainEvaluationToPortfolio);
 evaluationModeCards?.addEventListener("click", (event) => {
   const card = event.target.closest('[data-choice-group="evaluation-mode"]');
@@ -1507,7 +1642,9 @@ evaluationModeSelect?.addEventListener("change", () => {
   currentMainEvaluation = null;
 });
 
-updateEvaluationModeUI();
-updateFullEvaluationLink({});
-hideAllResultPanels();
-setLoadingVisible(false);
+if (form) {
+  updateEvaluationModeUI();
+  updateFullEvaluationLink({});
+  hideAllResultPanels();
+  setLoadingVisible(false);
+}

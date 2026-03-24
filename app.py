@@ -144,6 +144,11 @@ def account():
     )
 
 
+@app.get("/subscriptions")
+def subscriptions():
+    return render_template("subscriptions.html", subscription_tiers=service.list_public_subscription_tiers())
+
+
 @app.get("/full-evaluation")
 @login_required
 def full_evaluation():
@@ -186,6 +191,12 @@ def admin_clients_page():
     return render_template("admin_clients.html", test_admin=service.test_admin_credentials())
 
 
+@app.get("/admin/subscriptions")
+@admin_required
+def admin_subscriptions_page():
+    return render_template("admin_subscriptions.html", tiers=service.list_subscription_tiers())
+
+
 @app.post("/api/valuation")
 def valuation():
     payload = request.get_json(force=True, silent=True) or {}
@@ -203,6 +214,7 @@ def valuation():
         result = service.run_condition_sweep(payload)
     except VehicleApiError as exc:
         return jsonify({"ok": False, "message": str(exc), "account_status": service.get_account_status(session.get("user_id"))}), 400
+    service.consume_credits(session.get("user_id"), decision.cost)
     return jsonify({"ok": True, **result, "account_status": service.get_account_status(session.get("user_id"))})
 
 
@@ -290,6 +302,25 @@ def account_status():
     return jsonify({"ok": True, "account_status": status})
 
 
+@app.get("/api/subscriptions")
+def public_subscriptions():
+    return jsonify({"ok": True, "items": service.list_public_subscription_tiers()})
+
+
+@app.post("/api/final-buy-offer")
+@login_required
+def final_buy_offer():
+    payload = request.get_json(force=True, silent=True) or {}
+    evaluation = payload.get("evaluation") or {}
+    if not isinstance(evaluation, dict) or not evaluation:
+        return jsonify({"ok": False, "message": "Missing evaluation payload."}), 400
+    try:
+        result = service.build_final_buy_offer(current_user()["id"], evaluation)
+    except VehicleApiError as exc:
+        return jsonify({"ok": False, "message": str(exc), "account_status": service.get_account_status(current_user()["id"])}), 400
+    return jsonify({"ok": True, **result})
+
+
 @app.post("/api/carvana-payout/jobs")
 @login_required
 def create_carvana_payout_job():
@@ -311,6 +342,7 @@ def create_carvana_payout_job():
         job = service.create_carvana_payout_job(current_user()["id"], payload)
     except VehicleApiError as exc:
         return jsonify({"ok": False, "message": str(exc), "account_status": service.get_account_status(current_user()["id"])}), 400
+    service.consume_credits(current_user()["id"], decision.cost)
     return jsonify({"ok": True, "job": job, "account_status": service.get_account_status(current_user()["id"])}), 201
 
 
@@ -357,6 +389,12 @@ def admin_users():
     return jsonify({"ok": True, "items": service.list_users()})
 
 
+@app.get("/api/admin/subscriptions")
+@admin_required
+def admin_subscriptions():
+    return jsonify({"ok": True, "items": service.list_subscription_tiers()})
+
+
 @app.get("/api/admin/payout-jobs")
 @admin_required
 def admin_payout_jobs():
@@ -369,14 +407,32 @@ def admin_update_user(user_id: int):
     payload = request.get_json(force=True, silent=True) or {}
     tier = payload.get("tier")
     credits = payload.get("credit_balance")
-    if tier is None:
-        return jsonify({"ok": False, "message": "Missing tier."}), 400
+    first_name = payload.get("first_name")
     try:
-        updated = service.update_user_tier(user_id, int(tier), int(credits) if credits is not None else None)
+        updated = None
+        if first_name is not None:
+            updated = service.update_user_profile(user_id, str(first_name))
+        if tier is not None:
+            updated = service.update_user_tier(user_id, int(tier), int(credits) if credits is not None else None)
+        elif credits is not None:
+            updated = service.update_user_credits(user_id, int(credits))
+        elif updated is None:
+            return jsonify({"ok": False, "message": "Missing user updates."}), 400
     except VehicleApiError as exc:
         return jsonify({"ok": False, "message": str(exc)}), 400
     if not updated:
         return jsonify({"ok": False, "message": "User not found."}), 404
+    return jsonify({"ok": True, "item": updated})
+
+
+@app.patch("/api/admin/subscriptions/<int:tier>")
+@admin_required
+def admin_update_subscription(tier: int):
+    payload = request.get_json(force=True, silent=True) or {}
+    try:
+        updated = service.update_subscription_tier(tier, payload)
+    except VehicleApiError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
     return jsonify({"ok": True, "item": updated})
 
 

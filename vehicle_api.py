@@ -93,6 +93,9 @@ class VehicleValueService:
     def get_account_status(self, user_id: int | None) -> dict[str, Any] | None:
         return self.accounts.get_user_subscription_status(user_id)
 
+    def consume_credits(self, user_id: int | None, cost: int) -> dict[str, Any] | None:
+        return self.accounts.consume_credits(user_id, cost)
+
     def authorize_evaluation_start(self, user_id: int | None, mode: str, payload: dict[str, Any]) -> PermissionDecision:
         return self.accounts.authorize_evaluation_start(user_id, mode, payload)
 
@@ -101,6 +104,18 @@ class VehicleValueService:
 
     def list_users(self) -> list[dict[str, Any]]:
         return self.accounts.list_users()
+
+    def list_subscription_tiers(self) -> list[dict[str, Any]]:
+        return self.accounts.list_subscription_tiers()
+
+    def list_public_subscription_tiers(self) -> list[dict[str, Any]]:
+        return self.accounts.get_public_subscription_tiers()
+
+    def update_subscription_tier(self, tier: int, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return self.accounts.update_subscription_tier(tier, payload)
+        except Exception as exc:  # noqa: BLE001
+            raise VehicleApiError(str(exc)) from exc
 
     def update_user_tier(self, user_id: int, tier: int, credit_balance: int | None = None) -> dict[str, Any] | None:
         try:
@@ -111,6 +126,12 @@ class VehicleValueService:
     def update_user_credits(self, user_id: int, credit_balance: int) -> dict[str, Any] | None:
         try:
             return self.accounts.update_user_credits(user_id, credit_balance)
+        except Exception as exc:  # noqa: BLE001
+            raise VehicleApiError(str(exc)) from exc
+
+    def update_user_profile(self, user_id: int, first_name: str) -> dict[str, Any] | None:
+        try:
+            return self.accounts.update_user_profile(user_id, first_name)
         except Exception as exc:  # noqa: BLE001
             raise VehicleApiError(str(exc)) from exc
 
@@ -165,5 +186,11 @@ class VehicleValueService:
     def retry_carvana_payout_job(self, job_id: int, user_id: int | None = None) -> dict[str, Any] | None:
         try:
             return self.carvana_payout.retry_carvana_payout_job(job_id, user_id=user_id)
+        except Exception as exc:  # noqa: BLE001
+            raise VehicleApiError(str(exc)) from exc
+
+    def build_final_buy_offer(self, user_id: int | None, evaluation: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return self.accounts.build_final_buy_offer(user_id, evaluation)
         except Exception as exc:  # noqa: BLE001
             raise VehicleApiError(str(exc)) from exc

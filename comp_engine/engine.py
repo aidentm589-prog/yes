@@ -1288,6 +1288,7 @@ class VehicleCompsEngine:
                 "dealer": listing.source_label,
                 "source_url": listing.url,
                 "url": listing.url,
+                "image_urls": listing.image_urls,
             }
             for listing in listings
         ]

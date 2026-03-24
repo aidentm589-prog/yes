@@ -1,0 +1,111 @@
+<header class="topbar">
+  <div class="topbar-left">
+    <button id="site-menu-button" class="site-menu-button" type="button" aria-expanded="false" aria-controls="site-menu-panel" aria-label="Open menu">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+    <div class="composer-credit-chip topbar-credit-chip" id="composer-credit-chip">
+      <span class="composer-credit-icon" aria-hidden="true">$</span>
+      <div class="composer-credit-copy">
+        <span>Credits Remaining</span>
+        <strong id="topbar-credit-value">
+          {% if auth_user and account_status %}
+            {% if account_status.is_unlimited %}Unlimited{% else %}{{ account_status.credit_balance }}{% endif %}
+          {% else %}
+            --
+          {% endif %}
+        </strong>
+      </div>
+    </div>
+  </div>
+  <div class="topbar-center">
+    <a class="topbar-tier-status" id="topbar-tier-status" tabindex="0" href="{{ url_for('subscriptions') }}">
+      <span class="topbar-tier-kicker">Access Status</span>
+      <strong id="topbar-tier-label">
+        {% if auth_user and account_status %}
+          {{ account_status.tier_label }}
+        {% else %}
+          Guest Access
+        {% endif %}
+      </strong>
+      <small class="topbar-tier-default" id="topbar-tier-default">
+        {% if auth_user and account_status %}
+          Current subscription access
+        {% else %}
+          Explore the analyzer with guest access.
+        {% endif %}
+      </small>
+      <small class="topbar-tier-hover" id="topbar-tier-hover">
+        {% if auth_user and account_status %}
+          {% if account_status.tier == 1 %}
+            Upgrade to Tier 2 for Batch Model access and 50 credits.
+          {% elif account_status.tier == 2 %}
+            Upgrade to Tier 3 for 500 credits and deeper deal flow.
+          {% elif account_status.tier == 3 %}
+            Upgrade to Tier 4 for unlimited usage.
+          {% elif account_status.tier == 4 %}
+            Unlimited usage unlocked across the platform.
+          {% else %}
+            Upgrade your access to unlock more evaluation power.
+          {% endif %}
+        {% else %}
+          Sign up to start at Tier 1 and unlock more evaluation power.
+        {% endif %}
+      </small>
+    </a>
+  </div>
+  <div class="topbar-right">
+    <div class="account-status-pill topbar-account-status">
+      {% if auth_user %}
+        <span>{{ auth_user.first_name or 'Account' }}</span>
+        <strong><a href="{{ url_for('account') }}">{{ auth_user.first_name or 'Open' }}</a></strong>
+      {% else %}
+        <span>Account</span>
+        <div class="account-status-links">
+          <strong><a href="{{ url_for('login') }}">Log In</a></strong>
+          <strong><a href="{{ url_for('signup') }}">Sign Up</a></strong>
+        </div>
+      {% endif %}
+    </div>
+    <a class="sticky-portfolio-button topbar-action-pill" href="{% if auth_user %}{{ url_for('portfolio') }}{% else %}{{ url_for('login') }}{% endif %}">
+      <span aria-hidden="true">❤️</span>
+      <span>Portfolio</span>
+    </a>
+    <button id="software-chat-button" class="software-chat-button topbar-action-icon" type="button" aria-expanded="false" aria-controls="software-chat-panel" aria-label="Open software assistant">
+      <span aria-hidden="true">👨‍💼</span>
+    </button>
+  </div>
+  <nav id="site-menu-panel" class="site-menu-panel hidden-panel" aria-label="Site menu">
+    <a class="site-menu-link" href="{{ url_for('index') }}">Evaluation Service</a>
+    <a class="site-menu-link" href="{{ url_for('subscriptions') }}">Subscriptions</a>
+    {% if auth_user %}
+      <a class="site-menu-link" href="{{ url_for('account') }}">Account</a>
+      <a class="site-menu-link" href="{{ url_for('carvana_payout') }}">Carvana Payout</a>
+      <a class="site-menu-link" href="{{ url_for('portfolio') }}">Evaluation Portfolio</a>
+      {% if is_admin_user %}
+        <a class="site-menu-link" href="{{ url_for('admin_overview_page') }}">Engine Overview</a>
+        <a class="site-menu-link" href="{{ url_for('admin_clients_page') }}">Client List</a>
+        <a class="site-menu-link" href="{{ url_for('admin_subscriptions_page') }}">Subscription Management</a>
+      {% endif %}
+      <a class="site-menu-link" href="{{ url_for('logout') }}">Log Out</a>
+    {% else %}
+      <a class="site-menu-link" href="{{ url_for('login') }}">Log In</a>
+      <a class="site-menu-link" href="{{ url_for('signup') }}">Sign Up</a>
+    {% endif %}
+  </nav>
+</header>
+<aside id="software-chat-panel" class="software-chat-panel hidden-panel" aria-label="Software assistant">
+  <div class="software-chat-head">
+    <div>
+      <strong>Software Assistant</strong>
+      <p>Ask questions about Car Flip Analyzer or plan the next feature.</p>
+    </div>
+    <button id="software-chat-close" type="button" class="software-chat-close" aria-label="Close software assistant">×</button>
+  </div>
+  <div id="software-chat-messages" class="software-chat-messages"></div>
+  <form id="software-chat-form" class="software-chat-form">
+    <textarea id="software-chat-input" rows="3" placeholder="Ask about the software..."></textarea>
+    <button id="software-chat-send" type="submit" class="button compact-chat-button">Send</button>
+  </form>
+</aside>

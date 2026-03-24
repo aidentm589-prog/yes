@@ -32,6 +32,7 @@ class AccountServiceTests(unittest.TestCase):
         payload = {"vehicle_input": "2014 audi a4 105000 miles"}
 
         first = service.authorize_evaluation_start(user["id"], "individual", payload)
+        service.consume_credits(user["id"], first.cost)
         second = service.authorize_evaluation_start(user["id"], "individual", payload)
         bulk = service.authorize_evaluation_start(
             user["id"],
@@ -50,7 +51,8 @@ class AccountServiceTests(unittest.TestCase):
     def test_free_tier_refills_after_24_hours_without_accumulating(self) -> None:
         service = self.create_service()
         user = service.create_user_account("Refill", "refill@example.com", "password123")
-        service.authorize_evaluation_start(user["id"], "individual", {"vehicle_input": "2014 audi a4 105000 miles"})
+        decision = service.authorize_evaluation_start(user["id"], "individual", {"vehicle_input": "2014 audi a4 105000 miles"})
+        service.consume_credits(user["id"], decision.cost)
 
         old_time = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
         service.repository.update_user_account(
@@ -72,7 +74,7 @@ class AccountServiceTests(unittest.TestCase):
         tier3 = service.update_user_tier(user["id"], 3)
         tier4 = service.update_user_tier(user["id"], 4)
 
-        self.assertEqual(tier2["credit_balance"], 25)
+        self.assertEqual(tier2["credit_balance"], 50)
         self.assertTrue(tier2["has_bulk_access"])
         self.assertEqual(tier3["credit_balance"], 500)
         self.assertTrue(tier3["has_bulk_access"])
@@ -88,11 +90,47 @@ class AccountServiceTests(unittest.TestCase):
             "bulk",
             {"vehicle_input": "$4,995\n2014 Audi A4 Premium Plus\nBoston, MA\n105K miles"},
         )
+        service.consume_credits(user["id"], decision.cost)
         updated = service.get_user_by_id(user["id"])
 
         self.assertTrue(decision.allowed)
         self.assertEqual(decision.cost, 5)
-        self.assertEqual(updated["credit_balance"], 20)
+        self.assertEqual(updated["credit_balance"], 45)
+
+    def test_subscription_tier_updates_change_live_defaults(self) -> None:
+        service = self.create_service()
+        service.update_subscription_tier(2, {
+            "display_name": "Scout Plus",
+            "credits_granted": 88,
+            "monthly_price": "$44",
+            "yearly_price": "$440",
+            "marketing_copy": "Updated live",
+            "has_bulk_access": True,
+            "is_unlimited": False,
+        })
+        user = service.create_user_account("Live", "live@example.com", "password123")
+        upgraded = service.update_user_tier(user["id"], 2)
+
+        self.assertEqual(upgraded["tier_label"], "Scout Plus")
+        self.assertEqual(upgraded["credit_balance"], 88)
+
+    def test_final_buy_add_on_consumes_one_credit_on_success(self) -> None:
+        service = self.create_service()
+        user = service.create_user_account("Closer", "closer@example.com", "password123")
+        service.update_user_tier(user["id"], 2)
+
+        result = service.build_final_buy_offer(user["id"], {
+            "recommended_max_buy_price": "$10,000",
+            "overall_range": {"market_value": "$12,000"},
+            "average_price_near_mileage": {"value": "$11,000"},
+            "recommended_target_resale_range": {"low": "$11,500", "high": "$12,500"},
+            "confidence_score": 72,
+        })
+        refreshed = service.get_user_by_id(user["id"])
+
+        self.assertIn("starting_offer", result)
+        self.assertIn("lowest_buy_point", result)
+        self.assertEqual(refreshed["credit_balance"], 49)
 
     def test_admin_can_ban_client_account(self) -> None:
         service = self.create_service()

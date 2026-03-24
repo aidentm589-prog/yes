@@ -5,6 +5,10 @@ const currentJobPanel = document.getElementById("carvana-current-job");
 const resultCard = document.getElementById("carvana-result-card");
 const historyGrid = document.getElementById("carvana-history");
 const accountStatusPill = document.querySelector(".account-status-pill");
+const topbarCreditValue = document.getElementById("topbar-credit-value");
+const topbarTierLabel = document.getElementById("topbar-tier-label");
+const topbarTierDefault = document.getElementById("topbar-tier-default");
+const topbarTierHover = document.getElementById("topbar-tier-hover");
 
 let currentJobId = null;
 let pollTimer = null;
@@ -19,13 +23,46 @@ function escapeHtml(value) {
 }
 
 function renderAccountStatus(status) {
-  if (!accountStatusPill || !status) {
+  if (!status) {
     return;
   }
-  accountStatusPill.innerHTML = `
-    <span>${escapeHtml(status.tier_label || "Account")}</span>
-    <strong>${escapeHtml(status.is_unlimited ? "Unlimited" : `Credits: ${Number(status.credit_balance || 0)}`)}</strong>
-  `;
+  if (accountStatusPill) {
+    accountStatusPill.innerHTML = `
+      <span>Account</span>
+      <strong><a href="/account">${escapeHtml(status.first_name || "Open")}</a></strong>
+    `;
+  }
+  if (topbarCreditValue) {
+    topbarCreditValue.textContent = status.is_unlimited ? "Unlimited" : `${Number(status.credit_balance || 0)}`;
+  }
+  if (topbarTierLabel) {
+    topbarTierLabel.textContent = status.tier_label || "Guest Access";
+  }
+  if (topbarTierDefault) {
+    topbarTierDefault.textContent = "Current subscription access";
+  }
+  if (topbarTierHover) {
+    topbarTierHover.textContent = tierHoverCopy(status);
+  }
+}
+
+function tierHoverCopy(status) {
+  if (!status) {
+    return "Sign up to start at Tier 1 and unlock more evaluation power.";
+  }
+  if (status.tier === 1) {
+    return "Upgrade to Tier 2 for Batch Model access and 50 credits.";
+  }
+  if (status.tier === 2) {
+    return "Upgrade to Tier 3 for 500 credits and deeper deal flow.";
+  }
+  if (status.tier === 3) {
+    return "Upgrade to Tier 4 for unlimited usage.";
+  }
+  if (status.tier === 4) {
+    return "Unlimited usage unlocked across the platform.";
+  }
+  return "Upgrade your access to unlock more evaluation power.";
 }
 
 function formatDateTime(value) {
