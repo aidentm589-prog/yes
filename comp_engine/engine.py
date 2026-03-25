@@ -975,8 +975,7 @@ class VehicleCompsEngine:
         max_price = min_price + 10000
         context = self._sanitize_upgrade_context(vehicle_context or {})
         class_specs = self._upgrade_class_specs()
-        inferred_focus = focus or self._preferred_upgrade_focus(context)
-        preferred_classes = self._preferred_upgrade_classes(context)
+        selected_focus = focus.strip().lower()
         grouped_candidates: dict[str, list[NormalizedListing]] = {}
 
         for class_key, class_spec in class_specs.items():
@@ -987,10 +986,10 @@ class VehicleCompsEngine:
                 class_key=class_key,
                 body_variants=class_spec["body_variants"],
             )
-            if inferred_focus:
+            if selected_focus:
                 candidates = [
                     listing for listing in candidates
-                    if inferred_focus.lower() in self._upgrade_focus_tags(listing)
+                    if selected_focus in self._upgrade_focus_tags(listing)
                 ]
             grouped_candidates[class_key] = self._rank_upgrade_candidates(
                 candidates,
@@ -999,7 +998,7 @@ class VehicleCompsEngine:
                 class_key=class_key,
             )[:10]
 
-        visible_class_keys = [body_style.lower()] if body_style and body_style.lower() in class_specs else preferred_classes
+        visible_class_keys = [body_style.lower()] if body_style and body_style.lower() in class_specs else list(class_specs.keys())
         classes = []
         for class_key in visible_class_keys:
             ranked = grouped_candidates.get(class_key, [])
@@ -1021,7 +1020,7 @@ class VehicleCompsEngine:
                 "body_styles": available_body_styles,
                 "focuses": available_focuses,
                 "selected_body_style": body_style.lower() if body_style else "",
-                "selected_focus": inferred_focus,
+                "selected_focus": selected_focus,
             },
             "classes": classes,
         }
