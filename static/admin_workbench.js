@@ -5,6 +5,8 @@ const workbenchInputLabel = document.getElementById("admin-workbench-input-label
 const workbenchMileageField = document.getElementById("admin-workbench-mileage-field");
 const workbenchMileageInput = document.getElementById("admin-workbench-mileage");
 const workbenchPriceField = document.getElementById("admin-workbench-price-field");
+const workbenchVinField = document.getElementById("admin-workbench-vin-field");
+const workbenchVinInput = document.getElementById("admin-workbench-vin");
 const workbenchDetailedAddon = document.getElementById("admin-addon-detailed");
 const workbenchForceRefresh = document.getElementById("admin-addon-force");
 const workbenchRunStatus = document.getElementById("admin-workbench-run-status");
@@ -17,6 +19,8 @@ const workbenchBulkPanel = document.getElementById("admin-workbench-bulk-panel")
 const workbenchBulkGrid = document.getElementById("admin-workbench-bulk-grid");
 const workbenchIndividualPanel = document.getElementById("admin-workbench-individual-panel");
 const workbenchIndividualGrid = document.getElementById("admin-workbench-individual-grid");
+const workbenchZippyPanel = document.getElementById("admin-workbench-zippy-panel");
+const workbenchZippyGrid = document.getElementById("admin-workbench-zippy-grid");
 const modeCards = document.querySelectorAll("[data-workbench-mode]");
 
 function escapeHtml(value) {
@@ -63,12 +67,16 @@ function setWorkbenchMode(mode) {
   workbenchModeInput.value = mode;
   modeCards.forEach((card) => card.classList.toggle("is-selected", card.dataset.workbenchMode === mode));
   const bulkMode = mode === "bulk";
+  const zippyMode = mode === "zippy";
   workbenchInputLabel.textContent = bulkMode ? "Batch Input" : "Vehicle Input";
   workbenchVehicleInput.rows = bulkMode ? 12 : 4;
   workbenchVehicleInput.placeholder = bulkMode
     ? "Paste the cars"
-    : "Describe the car or paste a link…";
+    : zippyMode
+      ? "Describe the car or paste a link for a fast scrape..."
+      : "Describe the car or paste a link…";
   workbenchMileageField.classList.toggle("hidden-panel", bulkMode);
+  workbenchVinField.classList.toggle("hidden-panel", bulkMode);
   workbenchPriceField.classList.toggle("hidden-panel", bulkMode);
   workbenchMileageInput.required = !bulkMode;
 }
@@ -87,6 +95,7 @@ function hideResults() {
   workbenchSummaryPanel.classList.add("hidden-panel");
   workbenchBulkPanel.classList.add("hidden-panel");
   workbenchIndividualPanel.classList.add("hidden-panel");
+  workbenchZippyPanel.classList.add("hidden-panel");
 }
 
 function renderSummary(rows = []) {
@@ -147,6 +156,33 @@ function renderBulk(items = []) {
   `).join("");
 }
 
+function renderZippy(result) {
+  workbenchZippyPanel.classList.remove("hidden-panel");
+  workbenchZippyGrid.classList.remove("muted");
+  const details = result.parsed_details || {};
+  const values = result.values || {};
+  const rows = [
+    ["Vehicle", result.vehicle_summary || ""],
+    ["Year", details.year || ""],
+    ["Make", details.make || ""],
+    ["Model", details.model || ""],
+    ["Trim", details.trim || "N/A"],
+    ["Mileage", details.mileage ? `${Number(details.mileage).toLocaleString()} miles` : "N/A"],
+    ["Average Price Of All Comps", values.average_all_comps || ""],
+    ["Average Price Of 20 Closest Mileage Comps", values.average_20_closest_mileage_comps || values.average_all_comps || ""],
+    ["Very Poor Buy Price", values.very_poor_buy_price || ""],
+    ["Good Buy Price", values.good_buy_price || ""],
+    ["Excellent Buy Price", values.excellent_buy_price || ""],
+    ["Comp Count", result.comparable_count || 0],
+  ];
+  workbenchZippyGrid.innerHTML = rows.map(([label, value]) => `
+    <article class="listing-card">
+      <span class="muted">${escapeHtml(label)}</span>
+      <strong>${escapeHtml(String(value ?? ""))}</strong>
+    </article>
+  `).join("");
+}
+
 modeCards.forEach((card) => {
   card.addEventListener("click", () => {
     setWorkbenchMode(card.dataset.workbenchMode || "individual");
@@ -156,6 +192,7 @@ modeCards.forEach((card) => {
 workbenchForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const bulkMode = workbenchModeInput.value === "bulk";
+  const zippyMode = workbenchModeInput.value === "zippy";
   workbenchMileageInput.setCustomValidity("");
   if (!bulkMode && !workbenchForm.reportValidity()) {
     if (!String(workbenchMileageInput.value || "").trim()) {
@@ -173,8 +210,12 @@ workbenchForm?.addEventListener("submit", async (event) => {
   hideResults();
   setLoadingState(
     true,
-    bulkMode ? "Running Batch V1" : "Running Indiv V1",
-    bulkMode ? "Parsing the queue and evaluating every valid car." : "Pulling comps and calculating the deal.",
+    bulkMode ? "Running Batch V1" : zippyMode ? "Running Zippy" : "Running Indiv V1",
+    bulkMode
+      ? "Parsing the queue and evaluating every valid car."
+      : zippyMode
+        ? "Scraping the market, averaging comps, and generating fast buy values."
+        : "Pulling comps and calculating the deal.",
   );
   workbenchRunStatus.textContent = "Running...";
 
@@ -182,6 +223,7 @@ workbenchForm?.addEventListener("submit", async (event) => {
     vehicle_input: workbenchVehicleInput.value,
     evaluation_mode: workbenchModeInput.value,
     mileage: workbenchMileageInput.value,
+    vin: workbenchVinInput.value,
     asking_price: document.getElementById("admin-workbench-asking-price")?.value || "",
     force_refresh: workbenchForceRefresh.checked,
     detailed_vehicle_report: workbenchDetailedAddon.checked ? "on" : "off",
@@ -206,6 +248,18 @@ workbenchForm?.addEventListener("submit", async (event) => {
         ["Skipped / Failed", (result.body.summary?.skipped_entries || 0) + (result.body.summary?.failed_entries || 0)],
       ]);
       renderBulk(result.body.items || []);
+      return;
+    }
+
+    if (result.body.mode === "zippy") {
+      workbenchRunStatus.textContent = "Zippy run complete.";
+      renderSummary([
+        ["Mode", "Zippy"],
+        ["Vehicle", result.body.vehicle_summary || ""],
+        ["Comp Count", result.body.comparable_count || 0],
+        ["Status", result.body.status || ""],
+      ]);
+      renderZippy(result.body);
       return;
     }
 

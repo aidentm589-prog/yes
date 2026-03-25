@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
 from .base import SourceAdapter
 from ..models import NormalizedListing, VehicleQuery
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _now_iso() -> str:
@@ -26,10 +30,15 @@ class MarketCheckBaseAdapter(SourceAdapter):
         self.http_client.register_rate_limiter(self.key, 0.25)
 
     def is_enabled(self) -> bool:
-        return bool(self.config.marketcheck_api_key)
+        return bool(self.config.marketcheck_api_key and self.config.enable_marketcheck)
 
     def search_listings(self, query: VehicleQuery) -> list[dict[str, Any]]:
         if not self.is_enabled() or not self.endpoint:
+            LOGGER.info(
+                "MarketCheck skipped: enabled=%s key_present=%s",
+                bool(getattr(self.config, "enable_marketcheck", False)),
+                bool(self.config.marketcheck_api_key),
+            )
             return []
         params = {
             "api_key": self.config.marketcheck_api_key,
@@ -38,17 +47,28 @@ class MarketCheckBaseAdapter(SourceAdapter):
             "model": query.model,
             "trim": query.trim or None,
             "zip": query.zip_code or None,
+            "state": query.state or None,
             "radius": 250 if query.zip_code else 500,
             "rows": min(self.config.max_source_results, 50),
             "car_type": "used",
         }
-        payload = self.http_client.get_json(
-            self.endpoint,
-            params=params,
-            source_key=self.key,
+        LOGGER.info(
+            "MarketCheck request: enabled=%s key_present=%s year=%s make=%s model=%s trim=%s zip=%s state=%s rows=%s",
+            bool(getattr(self.config, "enable_marketcheck", False)),
+            bool(self.config.marketcheck_api_key),
+            query.year,
+            query.make,
+            query.model,
+            query.trim,
+            query.zip_code,
+            query.state,
+            params["rows"],
         )
+        payload = self.http_client.get_json(self.endpoint, params=params, source_key=self.key)
         listings = payload.get("listings") or payload.get("data") or []
-        return [listing for listing in listings if isinstance(listing, dict)]
+        normalized = [listing for listing in listings if isinstance(listing, dict)]
+        LOGGER.info("MarketCheck response: status=ok results=%s", len(normalized))
+        return normalized
 
     def normalize_listing(self, raw: dict[str, Any], query: VehicleQuery) -> NormalizedListing | None:
         dealer = raw.get("dealer") or {}
@@ -115,9 +135,9 @@ class MarketCheckBaseAdapter(SourceAdapter):
 
 
 class MarketCheckDealerAdapter(MarketCheckBaseAdapter):
-    key = "marketcheck_dealer"
-    label = "MarketCheck Dealer"
-    notes = "Official dealer inventory API adapter. Enabled only when MARKETCHECK_API_KEY is configured."
+    key = "marketcheck"
+    label = "MarketCheck"
+    notes = "Official MarketCheck active used-car search adapter. Enabled only when COMP_ENABLE_MARKETCHECK=true and MARKETCHECK_API_KEY is configured."
     endpoint = "https://api.marketcheck.com/v2/search/car/active"
     seller_type = "dealer"
 

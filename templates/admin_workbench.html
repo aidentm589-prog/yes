@@ -32,7 +32,7 @@
         <p class="deal-kicker">Admin</p>
         <h1>Operator Workbench</h1>
         <p class="full-evaluation-copy">
-          Direct access to Indiv V1 and Batch V1 with the add-ons, no client-facing subscription clutter.
+          Direct access to Indiv V1, Batch V1, and Zippy with the add-ons, no client-facing subscription clutter.
         </p>
       </section>
 
@@ -52,6 +52,11 @@
                   <strong>Batch V1</strong>
                   <small>Paste a queue and rank the results fast.</small>
                 </button>
+                <button class="choice-card" type="button" data-workbench-mode="zippy">
+                  <span class="choice-eyebrow">Fast Numbers</span>
+                  <strong>Zippy</strong>
+                  <small>Quick scrape, quick averages, quick buy targets.</small>
+                </button>
               </div>
               <input id="admin-workbench-mode" type="hidden" name="evaluation_mode" value="individual" />
             </label>
@@ -64,6 +69,11 @@
             <label id="admin-workbench-mileage-field" class="full-evaluation-label">
               <span>Mileage</span>
               <input id="admin-workbench-mileage" name="mileage" type="number" min="0" step="1" inputmode="numeric" placeholder="Mileage" />
+            </label>
+
+            <label id="admin-workbench-vin-field" class="full-evaluation-label">
+              <span>VIN (Optional)</span>
+              <input id="admin-workbench-vin" name="vin" type="text" maxlength="17" autocapitalize="characters" placeholder="VIN (Optional)" />
             </label>
 
             <label id="admin-workbench-price-field" class="full-evaluation-label">
@@ -119,6 +129,13 @@
           <strong>Indiv V1 Output</strong>
         </div>
         <div id="admin-workbench-individual-grid" class="admin-workbench-output-grid muted"></div>
+      </section>
+
+      <section id="admin-workbench-zippy-panel" class="panel hidden-panel">
+        <div class="results-head">
+          <strong>Zippy Output</strong>
+        </div>
+        <div id="admin-workbench-zippy-grid" class="admin-workbench-output-grid muted"></div>
       </section>
     </main>
 

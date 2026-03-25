@@ -119,6 +119,7 @@ const vehicleFields = [
   ["model", "Model"],
   ["trim", "Trim"],
   ["mileage", "Mileage"],
+  ["vin", "VIN"],
   ["asking_price", "Price"],
   ["title_status", "Title"],
   ["zip_code", "ZIP Code"],
@@ -221,6 +222,7 @@ function tierHoverCopy(status) {
 
 function buildEvaluationCacheFingerprint(payload = {}) {
   return JSON.stringify({
+    evaluation_mode: String(payload.evaluation_mode || "zippy").trim().toLowerCase(),
     vehicle_input: String(payload.vehicle_input || "").trim().toLowerCase(),
     mileage: String(payload.mileage || "").trim(),
     rebuilt_title: String(payload.rebuilt_title || "").trim().toLowerCase(),
@@ -230,7 +232,7 @@ function buildEvaluationCacheFingerprint(payload = {}) {
 function cacheEvaluationResult(payload = {}, resultBody = {}) {
   try {
     const fingerprint = buildEvaluationCacheFingerprint(payload);
-    if (!fingerprint || !resultBody || resultBody.status !== "complete") {
+    if (!fingerprint || !resultBody || resultBody.status !== "complete" || resultBody.mode === "zippy") {
       return;
     }
     window.sessionStorage.setItem(
@@ -295,6 +297,10 @@ function isBulkMode() {
   return (evaluationModeSelect?.value || "individual") === "bulk";
 }
 
+function selectedEvaluationMode() {
+  return evaluationModeSelect?.value || "zippy";
+}
+
 function setChoiceCardSelection(groupName, value) {
   document.querySelectorAll(`[data-choice-group="${groupName}"]`).forEach((element) => {
     element.classList.toggle("is-selected", element.getAttribute("data-value") === value);
@@ -302,14 +308,28 @@ function setChoiceCardSelection(groupName, value) {
 }
 
 function syncBulkLockState(status) {
+  const individualCard = evaluationModeCards?.querySelector('[data-value="individual"]');
   const bulkCard = evaluationModeCards?.querySelector('[data-value="bulk"]');
-  if (!bulkCard) {
+  if (!individualCard && !bulkCard) {
     syncAddonLockState(status);
     return;
   }
-  const isLocked = !status || (!status.is_unlimited && !status.has_bulk_access);
-  bulkCard.classList.toggle("is-locked", isLocked);
-  bulkCard.setAttribute("aria-disabled", isLocked ? "true" : "false");
+  const individualLocked = !status || (!status.is_unlimited && !status.can_use_individual_model);
+  const bulkLocked = !status || (!status.is_unlimited && !status.can_use_bulk_model);
+  if (individualCard) {
+    individualCard.classList.toggle("is-locked", individualLocked);
+    individualCard.setAttribute("aria-disabled", individualLocked ? "true" : "false");
+    individualCard.setAttribute("data-lock-message", "Upgrade to Tier 2 to unlock the Individual Evaluation Model.");
+  }
+  if (bulkCard) {
+    bulkCard.classList.toggle("is-locked", bulkLocked);
+    bulkCard.setAttribute("aria-disabled", bulkLocked ? "true" : "false");
+    bulkCard.setAttribute("data-lock-message", "Upgrade to Tier 3 to unlock the Bulk Evaluation Model.");
+  }
+  const selectedMode = selectedEvaluationMode();
+  if ((selectedMode === "individual" && individualLocked) || (selectedMode === "bulk" && bulkLocked)) {
+    evaluationModeSelect.value = "zippy";
+  }
   syncAddonLockState(status);
 }
 
@@ -337,10 +357,12 @@ function setDisabledForField(container, disabled) {
 }
 
 function updateEvaluationModeUI() {
-  const bulkMode = isBulkMode();
+  const mode = selectedEvaluationMode();
+  const bulkMode = mode === "bulk";
+  const zippyMode = mode === "zippy";
   if (vehicleInputLabel) {
-    vehicleInputLabel.textContent = bulkMode ? "Paste the cars" : "Describe the car";
-    vehicleInputLabel.classList.toggle("visually-hidden", !bulkMode);
+    vehicleInputLabel.textContent = bulkMode ? "Paste the cars" : zippyMode ? "Quick vehicle input" : "Describe the car";
+    vehicleInputLabel.classList.toggle("visually-hidden", !(bulkMode || zippyMode));
   }
   if (vehicleInputHelper) {
     vehicleInputHelper.classList.toggle("hidden-panel", !bulkMode);
@@ -349,6 +371,8 @@ function updateEvaluationModeUI() {
     vehicleInput.rows = bulkMode ? 10 : 3;
     vehicleInput.placeholder = bulkMode
       ? "Paste the cars"
+      : zippyMode
+        ? "Year make model, a rough trim, a VIN, or a listing link..."
       : "Describe the car or paste a link…";
   }
   mileageField?.classList.toggle("hidden-panel", bulkMode);
@@ -359,12 +383,12 @@ function updateEvaluationModeUI() {
   setDisabledForField(rebuiltToggleRow, bulkMode);
   const mileageInput = document.getElementById("vehicle-mileage");
   if (mileageInput) {
-    mileageInput.required = !bulkMode;
+    mileageInput.required = !bulkMode && !zippyMode;
     if (bulkMode) {
       mileageInput.setCustomValidity("");
     }
   }
-  setChoiceCardSelection("evaluation-mode", bulkMode ? "bulk" : "individual");
+  setChoiceCardSelection("evaluation-mode", mode);
   setChoiceCardSelection(
     "detailed-report",
     (detailedVehicleReportSelect?.value || "off") === "on" ? "on" : "off",
@@ -526,9 +550,13 @@ function renderVehicleBrief(details, fallback) {
 
   sourceSummary.classList.remove("muted");
   const referenceVehicle = extractReferenceVehicleMedia(currentMainEvaluation);
+  const vinRefinementNote = details?.vin_decoded_used
+    ? `<div class="vehicle-vin-note">Vehicle details refined using VIN decode.</div>`
+    : "";
   sourceSummary.innerHTML = `
     <div class="vehicle-brief">
       ${rows.join("")}
+      ${vinRefinementNote}
       ${renderReferenceVehicleCard(referenceVehicle)}
     </div>
   `;
@@ -1343,6 +1371,12 @@ function buildStatusMessage(result) {
   if (result.body?.mode === "bulk") {
     return result.body.message || "Bulk evaluation complete.";
   }
+  if (result.body?.mode === "zippy") {
+    const count = result.body.comparable_count || 0;
+    return count
+      ? `Zippy scraped ${count} priced comps and generated the quick market values.`
+      : (result.body.message || "Zippy run complete.");
+  }
   const count = result.body.comparable_count || 0;
   const averagePrice = averageListingPrice(result.body);
   if (count && averagePrice) {
@@ -1356,6 +1390,34 @@ function buildStatusMessage(result) {
 
 function buildNotes(result) {
   return [];
+}
+
+function renderZippyResult(resultBody) {
+  setResultsVisible(true);
+  resultsConditionsPanel?.classList.add("hidden-panel");
+  resultsTitleImpactPanel?.classList.add("hidden-panel");
+  resultsPricingPanel?.classList.add("hidden-panel");
+  resultsDetailedReportPanel?.classList.add("hidden-panel");
+  dealTransitionPanel?.classList.add("hidden-panel");
+  renderVehicleBrief(resultBody.parsed_details, resultBody.vehicle_summary);
+  renderConditionValues(null);
+  renderMileagePriceBands(null);
+  const values = resultBody.values || {};
+  const zippyRange = {
+    average_price_of_all_comps: values.average_all_comps || "",
+    average_price_of_20_closest_mileage_comps: values.average_20_closest_mileage_comps || values.average_all_comps || "",
+    very_poor_buy_price: values.very_poor_buy_price || "",
+    good_buy_price: values.good_buy_price || "",
+    excellent_buy_price: values.excellent_buy_price || "",
+  };
+  renderOverallRange(zippyRange);
+  renderAveragePriceNearMileage(null);
+  renderMileagePriceDelta(null, null);
+  renderTitleImpact(null);
+  renderListingPriceAnalysis(null);
+  renderDetailedReport(null);
+  showingAllComparableListings = false;
+  setComparableListings([], resultBody.matched_comps || []);
 }
 
 async function postJson(url, payload = {}) {
@@ -1560,12 +1622,14 @@ async function saveMainEvaluationToPortfolio() {
 form?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const mileageInput = document.getElementById("vehicle-mileage");
-  const bulkMode = isBulkMode();
+  const mode = selectedEvaluationMode();
+  const bulkMode = mode === "bulk";
+  const zippyMode = mode === "zippy";
   if (mileageInput) {
     mileageInput.setCustomValidity("");
   }
   if (!bulkMode && !form.reportValidity()) {
-    if (mileageInput && !String(mileageInput.value || "").trim()) {
+    if (!zippyMode && mileageInput && !String(mileageInput.value || "").trim()) {
       mileageInput.setCustomValidity("Mileage is required to run the evaluation.");
       mileageInput.reportValidity();
     }
@@ -1584,9 +1648,11 @@ form?.addEventListener("submit", async (event) => {
     true,
     bulkMode
       ? "Parsing vehicles, evaluating each one, and ranking the best deals in the batch."
+      : zippyMode
+        ? "Scraping live comps, averaging the market, and generating the fast buy values."
       : "Building comps, checking pricing, and calculating your potential deal.",
-    bulkMode ? "Ranking the strongest deals" : "Building comps and pricing",
-    bulkMode ? "Evaluating the batch" : "Evaluating the deal",
+    bulkMode ? "Ranking the strongest deals" : zippyMode ? "Running Zippy" : "Building comps and pricing",
+    bulkMode ? "Evaluating the batch" : zippyMode ? "Evaluating the deal" : "Evaluating the deal",
   );
   startLoadingProgress();
   sessionBadge.textContent = "Running";
@@ -1647,6 +1713,24 @@ form?.addEventListener("submit", async (event) => {
       renderTitleImpact(null);
       renderListingPriceAnalysis(null);
       renderDetailedReport(null);
+      return;
+    }
+
+    if (result.body.mode === "zippy") {
+      currentMainEvaluation = result.body;
+      setLoadingVisible(false);
+      stopLoadingProgress();
+      sessionBadge.textContent = `${result.body.comparable_count || 0} comps`;
+      statusMessage.textContent = buildStatusMessage(result);
+      setNotes([]);
+      renderZippyResult(result.body);
+      if (composerPanel) {
+        composerPanel.classList.add("hidden-panel");
+      }
+      window.requestAnimationFrame(() => {
+        const top = (resultsStatusPanel?.getBoundingClientRect().top || 0) + window.scrollY - 72;
+        window.scrollTo({ top, behavior: "smooth" });
+      });
       return;
     }
 
@@ -1765,7 +1849,7 @@ evaluationModeCards?.addEventListener("click", (event) => {
     window.alert(card.getAttribute("data-lock-message") || "Your subscription level does not qualify for this model.");
     return;
   }
-  evaluationModeSelect.value = card.getAttribute("data-value") || "individual";
+  evaluationModeSelect.value = card.getAttribute("data-value") || "zippy";
   updateEvaluationModeUI();
   hideAllResultPanels();
   currentMainEvaluation = null;

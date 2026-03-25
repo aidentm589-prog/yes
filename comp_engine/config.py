@@ -53,6 +53,7 @@ class EngineConfig:
     enable_ebay_motors: bool
     enable_marketcheck_dealer: bool
     enable_marketcheck_private: bool
+    enable_marketcheck: bool
     enable_manual_import: bool
     enable_custom_source: bool
     ebay_client_id: str
@@ -75,6 +76,7 @@ class EngineConfig:
         ebay_client_id = os.getenv("EBAY_CLIENT_ID", "").strip()
         ebay_client_secret = os.getenv("EBAY_CLIENT_SECRET", "").strip()
         marketcheck_api_key = os.getenv("MARKETCHECK_API_KEY", "").strip()
+        marketcheck_enabled = _env_flag("COMP_ENABLE_MARKETCHECK", False) and bool(marketcheck_api_key)
         return cls(
             cache_ttl_seconds=_env_int("COMP_CACHE_TTL_SECONDS", 1800),
             http_timeout_seconds=_env_int("COMP_HTTP_TIMEOUT_SECONDS", 20),
@@ -88,8 +90,9 @@ class EngineConfig:
             enable_autodev=_env_flag("COMP_ENABLE_AUTODEV", bool(autodev_api_key)),
             enable_oneauto=_env_flag("COMP_ENABLE_ONEAUTO", bool(oneauto_api_key)),
             enable_ebay_motors=_env_flag("COMP_ENABLE_EBAY_MOTORS", bool(ebay_client_id and ebay_client_secret)),
-            enable_marketcheck_dealer=_env_flag("COMP_ENABLE_MARKETCHECK_DEALER", bool(marketcheck_api_key)),
-            enable_marketcheck_private=_env_flag("COMP_ENABLE_MARKETCHECK_PRIVATE", bool(marketcheck_api_key)),
+            enable_marketcheck=marketcheck_enabled,
+            enable_marketcheck_dealer=_env_flag("COMP_ENABLE_MARKETCHECK_DEALER", marketcheck_enabled),
+            enable_marketcheck_private=_env_flag("COMP_ENABLE_MARKETCHECK_PRIVATE", False),
             enable_manual_import=_env_flag("COMP_ENABLE_MANUAL_IMPORT", True),
             enable_custom_source=_env_flag("COMP_ENABLE_CUSTOM_SOURCE", True),
             ebay_client_id=ebay_client_id,

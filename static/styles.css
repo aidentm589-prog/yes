@@ -837,6 +837,11 @@ textarea {
   gap: 0.95rem;
 }
 
+.model-choice-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+}
+
 .choice-card,
 .addon-card {
   position: relative;
@@ -900,6 +905,43 @@ textarea {
   font-weight: 600;
 }
 
+.model-choice-card {
+  min-height: 188px;
+  padding: 1.18rem 1.18rem 1.25rem;
+  background:
+    radial-gradient(circle at top right, rgba(116, 196, 255, 0.2), transparent 32%),
+    radial-gradient(circle at bottom left, rgba(81, 153, 255, 0.14), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 70%),
+    rgba(7, 23, 55, 0.56);
+}
+
+.model-choice-card strong {
+  font-size: 1.7rem;
+}
+
+.model-choice-card small {
+  font-size: 0.97rem;
+}
+
+.model-choice-note {
+  margin-top: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  padding: 0.42rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #eff9ff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.model-choice-card.is-selected .model-choice-note {
+  background: linear-gradient(135deg, rgba(116, 196, 255, 0.24), rgba(67, 126, 255, 0.22));
+  box-shadow: 0 0 24px rgba(116, 196, 255, 0.18);
+}
+
 .choice-card small,
 .addon-card small {
   color: rgba(255, 255, 255, 0.82);
@@ -917,6 +959,15 @@ textarea {
     0 24px 48px rgba(0, 0, 0, 0.24),
     0 0 0 1px rgba(116, 196, 255, 0.2),
     inset 0 0 0 1px rgba(178, 229, 255, 0.22);
+}
+
+.model-choice-card.is-selected {
+  transform: translateY(-4px) scale(1.015);
+  box-shadow:
+    0 28px 52px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(116, 196, 255, 0.22),
+    inset 0 0 0 1px rgba(190, 234, 255, 0.24),
+    0 0 38px rgba(80, 160, 255, 0.14);
 }
 
 .choice-card.is-locked {
@@ -948,6 +999,10 @@ textarea {
   font-size: 0.74rem;
   font-weight: 700;
   letter-spacing: 0.03em;
+}
+
+.model-choice-card.is-locked::after {
+  content: "Upgrade to unlock";
 }
 
 .choice-lock-note {
@@ -1643,6 +1698,16 @@ textarea:focus {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
     0 16px 30px rgba(0, 0, 0, 0.12);
+}
+
+.vehicle-vin-note {
+  margin-top: 0.45rem;
+  padding: 0.72rem 0.9rem;
+  border: 1px solid rgba(140, 219, 255, 0.18);
+  border-radius: 16px;
+  background: rgba(10, 34, 70, 0.34);
+  color: #e4f6ff;
+  font-size: 0.92rem;
 }
 
 .vehicle-reference-label {

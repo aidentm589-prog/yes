@@ -56,8 +56,11 @@ class VehicleCompsEngine:
 
     def evaluate(self, payload: dict[str, Any]) -> dict[str, Any]:
         payload = dict(payload)
-        if str(payload.get("evaluation_mode", "")).strip().lower() == "bulk":
+        mode = str(payload.get("evaluation_mode", "")).strip().lower()
+        if mode == "bulk":
             return self.run_bulk_evaluation(payload)
+        if mode == "zippy":
+            return self._evaluate_zippy(payload)
         return self._evaluate_single(payload)
 
     def _evaluate_single(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -119,6 +122,86 @@ class VehicleCompsEngine:
             response["detailed_vehicle_report"] = self.detailed_reports.get_detailed_vehicle_report(query, response, included)
         self.repository.set_cache_json(cache_key, response, ttl_seconds=self.config.cache_ttl_seconds)
         return response
+
+    def _evaluate_zippy(self, payload: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(payload)
+        vehicle_input = str(payload.get("vehicle_input", "")).strip()
+        if vehicle_input:
+            augmented_input, extracted_pages = self.link_extractor.augment_vehicle_input(vehicle_input)
+            payload["vehicle_input"] = augmented_input
+            if extracted_pages and not payload.get("asking_price"):
+                for extracted in extracted_pages:
+                    asking_price = extracted.get("asking_price")
+                    if asking_price:
+                        payload["asking_price"] = asking_price
+                        break
+        query = parse_vehicle_query(payload)
+        self._apply_vin_decode(query)
+        enabled_source_keys = [adapter.key for adapter in self.adapters if adapter.is_enabled()]
+
+        if not (query.year and query.make and query.model):
+            return {
+                "mode": "zippy",
+                "status": "needs_more_data",
+                "provider": "Multi-source vehicle comps engine",
+                "vehicle_summary": self._vehicle_summary(query),
+                "parsed_details": self._query_dict(query),
+                "comparable_count": 0,
+                "source_breakdown": [],
+                "matched_comps": [],
+                "values": {},
+                "message": "Include at least the year, make, and model to run Zippy.",
+                "assumptions": self._assumptions(query, enabled_source_keys),
+            }
+
+        source_results = self._run_sources(query)
+        deduped = self._dedupe_listings([
+            listing
+            for result in source_results
+            for listing in result.normalized_listings
+        ])
+        valid = [
+            listing for listing in deduped
+            if self._listing_market_price(listing) is not None
+        ]
+        if not valid:
+            return {
+                "mode": "zippy",
+                "status": "needs_more_data",
+                "provider": "Multi-source vehicle comps engine",
+                "vehicle_summary": self._vehicle_summary(query),
+                "parsed_details": self._query_dict(query),
+                "comparable_count": 0,
+                "source_breakdown": [],
+                "matched_comps": [],
+                "values": {},
+                "message": "Zippy did not find enough priced comps yet.",
+                "assumptions": self._assumptions(query, enabled_source_keys),
+            }
+
+        avg_all = self.calculate_market_value(valid)
+        avg_closest = self._average_price_of_closest_mileage(valid, query.mileage, 20) if query.mileage else avg_all
+        anchor = avg_closest or avg_all
+        zippy_values = {
+            "average_all_comps": money(avg_all),
+            "average_20_closest_mileage_comps": money(avg_closest) if avg_closest else "",
+            "very_poor_buy_price": money(anchor * 0.55) if anchor else "",
+            "good_buy_price": money(anchor * 0.72) if anchor else "",
+            "excellent_buy_price": money(anchor * 0.84) if anchor else "",
+        }
+        return {
+            "mode": "zippy",
+            "status": "complete",
+            "provider": "Multi-source vehicle comps engine",
+            "vehicle_summary": self._vehicle_summary(query),
+            "parsed_details": self._query_dict(query),
+            "comparable_count": len(valid),
+            "source_breakdown": self._source_breakdown(valid),
+            "matched_comps": [self._listing_public_dict(listing) for listing in valid[:20]],
+            "values": zippy_values,
+            "message": "Zippy scraped comps, averaged the market, and generated fast buy bands.",
+            "assumptions": self._assumptions(query, enabled_source_keys),
+        }
 
     def run_bulk_evaluation(self, payload: dict[str, Any]) -> dict[str, Any]:
         raw_text = str(payload.get("vehicle_input", "") or payload.get("bulk_vehicle_input", "")).strip()
@@ -195,7 +278,6 @@ class VehicleCompsEngine:
             OneAutoAdapter(*shared_args),
             EbayMotorsAdapter(*shared_args),
             MarketCheckDealerAdapter(*shared_args),
-            MarketCheckPrivatePartyAdapter(*shared_args),
             ManualImportAdapter(*shared_args),
             CustomSourceAdapter(*shared_args),
         ]
@@ -203,31 +285,36 @@ class VehicleCompsEngine:
         return adapters
 
     def _apply_vin_decode(self, query: VehicleQuery) -> None:
-        if not query.vin:
+        if not query.vin or not self.vin_decoder.is_valid_vin(query.vin):
             return
         try:
             decoded = self.vin_decoder.decode(query.vin, model_year=query.year)
         except Exception as exc:  # noqa: BLE001
             LOGGER.warning("VIN decode failed for %s: %s", query.vin, exc)
             return
-        if not query.year and decoded.get("year"):
+        if not decoded:
+            return
+        if decoded.get("year"):
             query.year = int(decoded["year"])
-        if not query.make and decoded.get("make"):
+        if decoded.get("make"):
             query.make = str(decoded["make"])
-        if not query.model and decoded.get("model"):
+        if decoded.get("model"):
             query.model = str(decoded["model"])
-        if not query.trim and decoded.get("trim"):
+        if decoded.get("trim"):
             query.trim = str(decoded["trim"])
-        if not query.body_style and decoded.get("body_style"):
+        elif decoded.get("series"):
+            query.trim = str(decoded["series"])
+        if decoded.get("body_style"):
             query.body_style = str(decoded["body_style"])
-        if not query.drivetrain and decoded.get("drivetrain"):
+        if decoded.get("drivetrain"):
             query.drivetrain = str(decoded["drivetrain"])
-        if not query.engine and decoded.get("engine"):
+        if decoded.get("engine"):
             query.engine = str(decoded["engine"])
-        if not query.transmission and decoded.get("transmission"):
+        if decoded.get("transmission"):
             query.transmission = str(decoded["transmission"])
-        if not query.fuel_type and decoded.get("fuel_type"):
+        if decoded.get("fuel_type"):
             query.fuel_type = str(decoded["fuel_type"])
+        query.vin_decoded_used = True
 
     def _run_sources(self, query: VehicleQuery) -> list[SourceRunResult]:
         source_results: list[SourceRunResult] = []
@@ -348,7 +435,7 @@ class VehicleCompsEngine:
             listing
             for listing in listings
             if listing.vin
-            and len(listing.vin.strip()) == 17
+            and self.vin_decoder.is_valid_vin(listing.vin)
             and not listing.metadata.get("vin_decoded")
             and (
                 listing.spec_confidence < 0.93
@@ -828,6 +915,28 @@ class VehicleCompsEngine:
             "range": f"{max(0, target_mileage - max_mileage_delta):,} to {target_mileage + max_mileage_delta:,} miles",
             "message": "",
         }
+
+    def _average_price_of_closest_mileage(
+        self,
+        listings: list[NormalizedListing],
+        target_mileage: int | None,
+        limit: int = 20,
+    ) -> float:
+        if not target_mileage:
+            return self.calculate_market_value(listings)
+        valid = [
+            listing for listing in listings
+            if listing.mileage is not None and self._listing_market_price(listing) is not None
+        ]
+        if not valid:
+            return self.calculate_market_value(listings)
+        selected = sorted(
+            valid,
+            key=lambda listing: abs(int(listing.mileage or 0) - int(target_mileage or 0)),
+        )[:limit]
+        if not selected:
+            return self.calculate_market_value(listings)
+        return sum(self._listing_market_price(listing) or 0.0 for listing in selected) / len(selected)
 
     def _listing_public_dict(self, listing: NormalizedListing) -> dict[str, Any]:
         return {
@@ -1355,7 +1464,7 @@ class VehicleCompsEngine:
             assumptions.append("No ZIP or state was provided, so the engine used a broader national comps basket.")
         if not query.trim:
             assumptions.append("No trim was provided, so matching broadened toward similar-config trims when needed.")
-        if query.vin:
+        if query.vin_decoded_used:
             assumptions.append("VIN-based normalization was used where possible to tighten the spec match.")
         return assumptions
 

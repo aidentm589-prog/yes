@@ -33,12 +33,12 @@ DEFAULT_TIER_RULES = {
     2: {
         "label": "Tier 2",
         "default_credits": 50,
-        "has_bulk_access": True,
+        "has_bulk_access": False,
         "has_addon_access": True,
         "is_unlimited": False,
         "monthly_price": "$29",
         "yearly_price": "$290",
-        "marketing_copy": "Batch model access and 50 credits for active scouting.",
+        "marketing_copy": "Unlock the full Individual model with 50 credits for active scouting.",
     },
     3: {
         "label": "Tier 3",
@@ -147,12 +147,17 @@ class AccountService:
         rule = self.tier_rule(int(user["tier"]))
         is_admin_access = self.is_admin_user(user)
         tier_label = "ADMIN" if is_admin_access else rule["label"]
+        can_use_zippy = True
+        can_use_individual_model = is_admin_access or int(user["tier"]) >= 2
+        can_use_bulk_model = is_admin_access or int(user["tier"]) >= 3
         permissions = []
         if user.get("is_unlimited"):
             permissions.append("Unlimited evaluations")
         else:
             permissions.append(f'{user.get("credit_balance", 0)} credit{"s" if user.get("credit_balance", 0) != 1 else ""}')
-        permissions.append("Bulk enabled" if user.get("has_bulk_access") else "Bulk blocked")
+        permissions.append("Zippy enabled" if can_use_zippy else "Zippy blocked")
+        permissions.append("Individual enabled" if can_use_individual_model else "Individual blocked")
+        permissions.append("Bulk enabled" if can_use_bulk_model else "Bulk blocked")
         permissions.append("Add-ons enabled" if self.tier_rule(int(user["tier"])).get("has_addon_access") else "Add-ons blocked")
         if is_admin_access:
             permissions.append("Admin access")
@@ -167,6 +172,9 @@ class AccountService:
             "credit_balance": user["credit_balance"],
             "credits_label": "Unlimited" if user.get("is_unlimited") else str(user.get("credit_balance", 0)),
             "has_bulk_access": bool(user.get("has_bulk_access")),
+            "can_use_zippy_model": can_use_zippy,
+            "can_use_individual_model": can_use_individual_model,
+            "can_use_bulk_model": can_use_bulk_model,
             "has_addon_access": bool(rule.get("has_addon_access")),
             "is_unlimited": bool(user.get("is_unlimited")),
             "monthly_price": rule.get("monthly_price", ""),
@@ -382,6 +390,17 @@ class AccountService:
             )
         return self._permission_for_mode(user, "individual", payload)
 
+    def can_run_zippy_evaluation(self, user: dict[str, Any], payload: dict[str, Any]) -> PermissionDecision:
+        query = parse_vehicle_query(payload)
+        if not (query.year and query.make and query.model):
+            return PermissionDecision(
+                allowed=False,
+                message="Please include at least the year, make, and model before running Zippy.",
+                status_code=400,
+                user=user,
+            )
+        return self._permission_for_mode(user, "zippy", payload)
+
     def can_run_bulk_evaluation(self, user: dict[str, Any], payload: dict[str, Any]) -> PermissionDecision:
         raw_text = str(payload.get("vehicle_input", "") or "").strip()
         parsed = parse_bulk_vehicle_text(raw_text)
@@ -440,7 +459,12 @@ class AccountService:
                 status_code=403,
                 user=user,
             )
-        decision = self.can_run_bulk_evaluation(user, payload) if mode == "bulk" else self.can_run_individual_evaluation(user, payload)
+        if mode == "bulk":
+            decision = self.can_run_bulk_evaluation(user, payload)
+        elif mode == "zippy":
+            decision = self.can_run_zippy_evaluation(user, payload)
+        else:
+            decision = self.can_run_individual_evaluation(user, payload)
         decision.user = self.get_user_by_id(user["id"]) or user
         return decision
 
@@ -592,6 +616,22 @@ class AccountService:
     def _permission_for_mode(self, user: dict[str, Any], mode: str, payload: dict[str, Any] | None = None) -> PermissionDecision:
         payload = payload or {}
         cost = BULK_COST if mode == "bulk" else INDIVIDUAL_COST
+        tier = int(user["tier"])
+        is_admin = self.is_admin_user(user)
+        if mode == "individual" and not (is_admin or tier >= 2):
+            return PermissionDecision(
+                allowed=False,
+                message="Upgrade to Tier 2 to unlock the Individual Evaluation Model.",
+                status_code=403,
+                user=user,
+            )
+        if mode == "bulk" and not (is_admin or tier >= 3):
+            return PermissionDecision(
+                allowed=False,
+                message="Upgrade to Tier 3 to unlock the Bulk Evaluation Model.",
+                status_code=403,
+                user=user,
+            )
         if self._detailed_report_enabled(payload):
             if not self.tier_rule(int(user["tier"])).get("has_addon_access"):
                 return PermissionDecision(
@@ -601,16 +641,14 @@ class AccountService:
                     user=user,
                 )
             cost += DETAILED_REPORT_COST
-        if mode == "bulk" and not user.get("has_bulk_access"):
-            return PermissionDecision(
-                allowed=False,
-                message="Your current tier does not include Bulk Evaluation.",
-                status_code=403,
-                user=user,
-            )
         if mode == "bulk":
             message = (
                 "You need at least 5 credits for Bulk Evaluation"
+                + (" plus 1 more credit for Detailed Vehicle Report." if self._detailed_report_enabled(payload) else ".")
+            )
+        elif mode == "zippy":
+            message = (
+                "You need 1 available credit for Zippy"
                 + (" plus 1 more credit for Detailed Vehicle Report." if self._detailed_report_enabled(payload) else ".")
             )
         else:

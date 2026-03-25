@@ -43,6 +43,17 @@
               placeholder="Mileage"
             />
           </label>
+          <label id="vin-field" class="full listing-price-field">
+            <span class="input-label-text">VIN (Optional)</span>
+            <input
+              id="vehicle-vin"
+              name="vin"
+              type="text"
+              maxlength="17"
+              autocapitalize="characters"
+              placeholder="VIN (Optional)"
+            />
+          </label>
           <label id="listing-price-field" class="full listing-price-field">
             <span class="input-label-text">Listing Price</span>
             <input
@@ -56,30 +67,45 @@
           <section class="choice-shell">
             <div class="choice-shell-head">
               <span class="input-label-text">Evaluation Mode</span>
-              <small>Choose the analyzer workflow</small>
+              <small>Start fast with Zippy, then unlock deeper models as your tier climbs.</small>
             </div>
-            <div class="choice-grid" id="evaluation-mode-cards">
-              <button class="choice-card is-selected" type="button" data-choice-group="evaluation-mode" data-value="individual">
-                <span class="choice-eyebrow">Standard</span>
-                <strong>Individual Evaluation Model</strong>
-                <small>One vehicle, full comps, focused deal readout.</small>
+            <div class="choice-grid model-choice-grid" id="evaluation-mode-cards">
+              <button class="choice-card model-choice-card is-selected" type="button" data-choice-group="evaluation-mode" data-value="zippy">
+                <span class="choice-eyebrow">Default Access</span>
+                <strong>Zippy Model</strong>
+                <small>Quick scrape, quick averages, and instant buy targets without the heavy analysis drag.</small>
+                <span class="choice-lock-note model-choice-note">Fastest lane for quick scouting</span>
               </button>
               <button
-                class="choice-card {% if (not auth_user) or (account_status and not account_status.has_bulk_access) %}is-locked{% endif %}"
+                class="choice-card model-choice-card {% if (not auth_user) or (account_status and (not account_status.can_use_individual_model)) %}is-locked{% endif %}"
+                type="button"
+                data-choice-group="evaluation-mode"
+                data-value="individual"
+                data-lock-message="Upgrade to Tier 2 to unlock the Individual Evaluation Model."
+                {% if (not auth_user) or (account_status and (not account_status.can_use_individual_model)) %}aria-disabled="true"{% endif %}
+              >
+                <span class="choice-eyebrow">Tier 2</span>
+                <strong>Individual Evaluation Model</strong>
+                <small>Unlock the full single-car evaluation flow with deeper comps, wider stats, and sharper matching.</small>
+                <span class="choice-lock-note model-choice-note">Tempting upgrade for deeper reads</span>
+              </button>
+              <button
+                class="choice-card model-choice-card {% if (not auth_user) or (account_status and (not account_status.can_use_bulk_model)) %}is-locked{% endif %}"
                 type="button"
                 data-choice-group="evaluation-mode"
                 data-value="bulk"
-                data-lock-message="Your subscription level does not qualify for Bulk Evaluation yet."
-                {% if (not auth_user) or (account_status and not account_status.has_bulk_access) %}aria-disabled="true"{% endif %}
+                data-lock-message="Upgrade to Tier 3 to unlock the Bulk Evaluation Model."
+                {% if (not auth_user) or (account_status and (not account_status.can_use_bulk_model)) %}aria-disabled="true"{% endif %}
               >
-                <span class="choice-eyebrow">Batch</span>
+                <span class="choice-eyebrow">Tier 3+</span>
                 <strong>Bulk Evaluation Model</strong>
-                <small>Paste a whole queue and rank the best opportunities fast.</small>
-                <span class="choice-lock-note">Upgrade required</span>
+                <small>Paste a whole queue, rank the strongest opportunities, and move like a high-volume buyer.</small>
+                <span class="choice-lock-note model-choice-note">High-end batch power</span>
               </button>
             </div>
             <select id="evaluation-mode" name="evaluation_mode" class="visually-hidden">
-              <option value="individual" selected>Individual Evaluation Model</option>
+              <option value="zippy" selected>Zippy Model</option>
+              <option value="individual">Individual Evaluation Model</option>
               <option value="bulk">Bulk Evaluation Model</option>
             </select>
           </section>

@@ -35,6 +35,7 @@ class VehicleQuery:
     state: str = ""
     seller_type: str = ""
     vin: str = ""
+    vin_decoded_used: bool = False
     latitude: float | None = None
     longitude: float | None = None
     manual_csv: str = ""
