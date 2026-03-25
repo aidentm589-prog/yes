@@ -83,6 +83,33 @@ function nextFailureStatus(runStepCount: number, maxSteps: number): RunStatus {
   return runStepCount >= maxSteps ? "failed" : "running";
 }
 
+function isSimpleSummaryGoal(goal: string) {
+  return /summari[sz]e|top headlines|news|extract|gather details/i.test(goal);
+}
+
+function buildObservationBackedFinish(runId: string, goal: string, observation: Awaited<ReturnType<typeof captureObservation>>["observation"]) {
+  const conciseSummary =
+    observation.summary.length > 320
+      ? `${observation.summary.slice(0, 317).trim()}...`
+      : observation.summary;
+
+  return {
+    status: "completed" as const,
+    summary: `Completed the task using the current page state from ${observation.url}. ${observation.title ? `Title: ${observation.title}. ` : ""}${conciseSummary}`,
+    structuredData: {
+      goal,
+      title: observation.title,
+      url: observation.url,
+      pageSummary: observation.summary,
+      visibleText: observation.visibleText,
+      interactiveSummary: observation.interactiveSummary ?? "",
+      evidence: {
+        screenshotPath: observation.screenshotPath ?? null,
+      },
+    },
+  };
+}
+
 function shouldRetryRun(run: Awaited<ReturnType<typeof runRepository.getRun>>, message: string) {
   if (!run) {
     return false;
@@ -189,6 +216,34 @@ export async function continueRun(runId: string) {
         memory,
         pendingApproval: false,
       });
+
+      if (
+        decision.action.kind === "getPageSummary" &&
+        isSimpleSummaryGoal(run.goal) &&
+        memory.recentActions.some(
+          (entry) => entry.kind === "getPageSummary" && entry.url === observation.url,
+        ) &&
+        !observation.startupBlank
+      ) {
+        const fallbackFinish = buildObservationBackedFinish(runId, run.goal, observation);
+        await runRepository.upsertFinalOutcome(
+          runId,
+          fallbackFinish.status,
+          fallbackFinish.summary,
+          fallbackFinish.structuredData as never,
+        );
+        run = await runRepository.updateRun(runId, {
+          status: "completed",
+          finishedAt: new Date(),
+          latestUrl: observation.url,
+          latestObservationId: observationRecord.id,
+          memory: memory as never,
+          stepCount: {
+            increment: 1,
+          },
+        });
+        break;
+      }
 
       const actionPolicy = validateActionAgainstPolicy(
         decision.action,
