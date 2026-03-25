@@ -224,8 +224,9 @@ def admin_subscriptions_page():
 @app.post("/api/valuation")
 def valuation():
     payload = request.get_json(force=True, silent=True) or {}
+    engine = str(payload.get("evaluation_engine", "resell") or "resell").strip().lower()
     mode = str(payload.get("evaluation_mode", "individual") or "individual").strip().lower()
-    decision = service.authorize_evaluation_start(session.get("user_id"), mode, payload)
+    decision = service.authorize_evaluation_start(session.get("user_id"), engine, mode, payload)
     if not decision.allowed:
         return jsonify(
             {
@@ -240,6 +241,35 @@ def valuation():
         return jsonify({"ok": False, "message": str(exc), "account_status": service.get_account_status(session.get("user_id"))}), 400
     service.consume_credits(session.get("user_id"), decision.cost)
     return jsonify({"ok": True, **result, "account_status": service.get_account_status(session.get("user_id"))})
+
+
+@app.post("/api/potential-upgrades")
+@login_required
+def potential_upgrades():
+    account_status = service.get_account_status(current_user()["id"])
+    if not account_status or not account_status.get("has_addon_access"):
+        return jsonify({
+            "ok": False,
+            "message": "Your current tier does not include Personal Value add-ons yet.",
+            "account_status": account_status,
+        }), 403
+    payload = request.get_json(force=True, silent=True) or {}
+    baseline_value = payload.get("baseline_value")
+    try:
+        baseline_float = float(str(baseline_value).replace("$", "").replace(",", ""))
+    except Exception:  # noqa: BLE001
+        return jsonify({"ok": False, "message": "A valid baseline value is required."}), 400
+    body_style = str(payload.get("body_style") or "").strip()
+    focus = str(payload.get("focus") or "").strip()
+    try:
+        result = service.get_potential_upgrade_candidates(
+            baseline_value=baseline_float,
+            body_style=body_style,
+            focus=focus,
+        )
+    except VehicleApiError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    return jsonify({"ok": True, **result})
 
 
 @app.post("/api/portfolio")

@@ -26,16 +26,18 @@ class AccountServiceTests(unittest.TestCase):
         self.assertFalse(user["has_bulk_access"])
         self.assertFalse(user["is_unlimited"])
 
-    def test_tier_one_consumes_one_credit_and_blocks_bulk(self) -> None:
+    def test_tier_one_can_run_zippy_and_blocks_higher_models(self) -> None:
         service = self.create_service()
         user = service.create_user_account("Tier", "tier1@example.com", "password123")
         payload = {"vehicle_input": "2014 audi a4 105000 miles"}
 
-        first = service.authorize_evaluation_start(user["id"], "individual", payload)
+        first = service.authorize_evaluation_start(user["id"], "resell", "zippy", payload)
         service.consume_credits(user["id"], first.cost)
-        second = service.authorize_evaluation_start(user["id"], "individual", payload)
+        second = service.authorize_evaluation_start(user["id"], "resell", "zippy", payload)
+        individual = service.authorize_evaluation_start(user["id"], "resell", "individual", payload)
         bulk = service.authorize_evaluation_start(
             user["id"],
+            "resell",
             "bulk",
             {"vehicle_input": "$4,995\n2014 Audi A4 Premium Plus\nBoston, MA\n105K miles"},
         )
@@ -45,13 +47,15 @@ class AccountServiceTests(unittest.TestCase):
         self.assertFalse(second.allowed)
         self.assertEqual(second.status_code, 403)
         self.assertIn("1 available credit", second.message)
+        self.assertFalse(individual.allowed)
+        self.assertIn("Tier 2", individual.message)
         self.assertFalse(bulk.allowed)
-        self.assertIn("does not include Bulk Evaluation", bulk.message)
+        self.assertIn("Tier 3", bulk.message)
 
     def test_free_tier_refills_after_24_hours_without_accumulating(self) -> None:
         service = self.create_service()
         user = service.create_user_account("Refill", "refill@example.com", "password123")
-        decision = service.authorize_evaluation_start(user["id"], "individual", {"vehicle_input": "2014 audi a4 105000 miles"})
+        decision = service.authorize_evaluation_start(user["id"], "resell", "individual", {"vehicle_input": "2014 audi a4 105000 miles"})
         service.consume_credits(user["id"], decision.cost)
 
         old_time = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
@@ -75,7 +79,7 @@ class AccountServiceTests(unittest.TestCase):
         tier4 = service.update_user_tier(user["id"], 4)
 
         self.assertEqual(tier2["credit_balance"], 50)
-        self.assertTrue(tier2["has_bulk_access"])
+        self.assertFalse(tier2["has_bulk_access"])
         self.assertEqual(tier3["credit_balance"], 500)
         self.assertTrue(tier3["has_bulk_access"])
         self.assertTrue(tier4["is_unlimited"])
@@ -83,10 +87,11 @@ class AccountServiceTests(unittest.TestCase):
     def test_bulk_consumes_five_credits_for_paid_tiers(self) -> None:
         service = self.create_service()
         user = service.create_user_account("Bulk", "bulk@example.com", "password123")
-        service.update_user_tier(user["id"], 2)
+        service.update_user_tier(user["id"], 3)
 
         decision = service.authorize_evaluation_start(
             user["id"],
+            "resell",
             "bulk",
             {"vehicle_input": "$4,995\n2014 Audi A4 Premium Plus\nBoston, MA\n105K miles"},
         )
@@ -119,7 +124,7 @@ class AccountServiceTests(unittest.TestCase):
         service = self.create_service()
         user = service.create_user_account("Addon", "addon@example.com", "password123")
 
-        blocked = service.authorize_evaluation_start(user["id"], "individual", {
+        blocked = service.authorize_evaluation_start(user["id"], "resell", "zippy", {
             "vehicle_input": "2014 audi a4 105000 miles",
             "detailed_vehicle_report": "on",
         })
@@ -138,11 +143,25 @@ class AccountServiceTests(unittest.TestCase):
         })
         service.update_user_tier(user["id"], 1)
 
-        allowed = service.authorize_evaluation_start(user["id"], "individual", {
+        allowed = service.authorize_evaluation_start(user["id"], "resell", "zippy", {
             "vehicle_input": "2014 audi a4 105000 miles",
             "detailed_vehicle_report": "on",
         })
         self.assertTrue(allowed.allowed)
+
+    def test_personal_engine_is_tier_one_accessible_and_costs_one_credit(self) -> None:
+        service = self.create_service()
+        user = service.create_user_account("Personal", "personal@example.com", "password123")
+
+        decision = service.authorize_evaluation_start(
+            user["id"],
+            "personal",
+            "beta_v1",
+            {"vehicle_input": "2014 audi a4", "mileage": "105000"},
+        )
+
+        self.assertTrue(decision.allowed)
+        self.assertEqual(decision.cost, 1)
 
     def test_final_buy_add_on_consumes_one_credit_on_success(self) -> None:
         service = self.create_service()

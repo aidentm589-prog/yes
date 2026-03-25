@@ -44,7 +44,8 @@ class VehicleQuery:
     custom_listings: list[dict[str, Any]] = field(default_factory=list)
 
     def minimum_details_present(self) -> bool:
-        return bool(self.year and self.make and self.model and self.mileage)
+        has_identity = bool(self.year and self.make and self.model)
+        return bool(has_identity and (self.mileage is not None or self.vin_decoded_used or self.vin))
 
     def as_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -158,6 +159,8 @@ class SourceRunResult:
             "enabled": self.metadata.enabled,
             "status": self.status,
             "message": self.message,
+            "raw_count": len(self.raw_listings),
+            "normalized_count": len(self.normalized_listings),
             "count": len(self.normalized_listings),
             "errors": self.errors,
         }

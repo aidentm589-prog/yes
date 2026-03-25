@@ -96,8 +96,8 @@ class VehicleValueService:
     def consume_credits(self, user_id: int | None, cost: int) -> dict[str, Any] | None:
         return self.accounts.consume_credits(user_id, cost)
 
-    def authorize_evaluation_start(self, user_id: int | None, mode: str, payload: dict[str, Any]) -> PermissionDecision:
-        return self.accounts.authorize_evaluation_start(user_id, mode, payload)
+    def authorize_evaluation_start(self, user_id: int | None, engine: str, mode: str, payload: dict[str, Any]) -> PermissionDecision:
+        return self.accounts.authorize_evaluation_start(user_id, engine, mode, payload)
 
     def authorize_carvana_payout_start(self, user_id: int | None) -> PermissionDecision:
         return self.accounts.authorize_carvana_payout_start(user_id)
@@ -198,5 +198,15 @@ class VehicleValueService:
     def build_final_buy_offer(self, user_id: int | None, evaluation: dict[str, Any]) -> dict[str, Any]:
         try:
             return self.accounts.build_final_buy_offer(user_id, evaluation)
+        except Exception as exc:  # noqa: BLE001
+            raise VehicleApiError(str(exc)) from exc
+
+    def get_potential_upgrade_candidates(self, baseline_value: float, body_style: str = "", focus: str = "") -> dict[str, Any]:
+        try:
+            return self.engine.get_potential_upgrade_candidates(
+                baseline_value=baseline_value,
+                body_style=body_style,
+                focus=focus,
+            )
         except Exception as exc:  # noqa: BLE001
             raise VehicleApiError(str(exc)) from exc

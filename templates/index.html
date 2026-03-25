@@ -66,6 +66,29 @@
           </label>
           <section class="choice-shell">
             <div class="choice-shell-head">
+              <span class="input-label-text">Evaluation Engine</span>
+              <small>Choose the kind of answer you want before picking a model.</small>
+            </div>
+            <div class="choice-grid engine-choice-grid" id="evaluation-engine-cards">
+              <button class="choice-card engine-choice-card" type="button" data-choice-group="evaluation-engine" data-value="resell">
+                <span class="choice-eyebrow">Deal Finder</span>
+                <strong>Resell Evaluation Engine</strong>
+                <small>Built to find steals, read deal spread, and work flip-focused pricing.</small>
+              </button>
+              <button class="choice-card engine-choice-card" type="button" data-choice-group="evaluation-engine" data-value="personal">
+                <span class="choice-eyebrow">Owner Focus</span>
+                <strong>Personal Value Evaluation Engine</strong>
+                <small>Built to answer what your own car should realistically be worth and sold for.</small>
+              </button>
+            </div>
+            <select id="evaluation-engine" name="evaluation_engine" class="visually-hidden" required>
+              <option value="" selected>Select an engine</option>
+              <option value="resell">Resell Evaluation Engine</option>
+              <option value="personal">Personal Value Evaluation Engine</option>
+            </select>
+          </section>
+          <section class="choice-shell hidden-panel" id="resell-model-shell">
+            <div class="choice-shell-head">
               <span class="input-label-text">Evaluation Mode</span>
               <small>Start fast with Zippy, then unlock deeper models as your tier climbs.</small>
             </div>
@@ -109,7 +132,7 @@
               <option value="bulk">Bulk Evaluation Model</option>
             </select>
           </section>
-          <section class="choice-shell addon-shell">
+          <section class="choice-shell addon-shell hidden-panel" id="resell-addon-shell">
             <div class="choice-shell-head">
               <span class="input-label-text">Juicy Add-Ons</span>
               <small>Premium extras that deepen the analysis</small>
@@ -132,6 +155,42 @@
               <option value="off" selected>Off</option>
               <option value="on">On</option>
             </select>
+          </section>
+          <section class="choice-shell hidden-panel" id="personal-model-shell">
+            <div class="choice-shell-head">
+              <span class="input-label-text">Personal Value Model</span>
+              <small>Seller-facing value built from the closest mileage comps in the current market.</small>
+            </div>
+            <div class="choice-grid engine-choice-grid">
+              <button class="choice-card engine-choice-card is-selected" type="button" data-choice-group="personal-model" data-value="beta_v1">
+                <span class="choice-eyebrow">Beta</span>
+                <strong>Beta V1</strong>
+                <small>Values what your car should realistically sell for instead of hunting for underpriced buys.</small>
+              </button>
+            </div>
+            <select id="personal-evaluation-mode" class="visually-hidden">
+              <option value="beta_v1" selected>Beta V1</option>
+            </select>
+          </section>
+          <section class="choice-shell addon-shell hidden-panel" id="personal-addon-shell">
+            <div class="choice-shell-head">
+              <span class="input-label-text">Personal Value Add-Ons</span>
+              <small>Ownership-side extras for seller insight and next-car browsing.</small>
+            </div>
+            <div class="addon-grid">
+              <button class="addon-card" id="personal-detailed-report-card" type="button" data-choice-group="personal-detailed-report" data-value="on">
+                <span class="choice-eyebrow">+1 Credit</span>
+                <strong>Detailed Car Summary</strong>
+                <small>Expanded vehicle context, specs, reliability, and ownership details for your car.</small>
+                <span class="addon-state">Optional Add-On</span>
+              </button>
+              <article class="addon-card addon-link-card" id="personal-upgrades-teaser-card">
+                <span class="choice-eyebrow">Add-On Perk</span>
+                <strong>Potential Upgrades</strong>
+                <small>After valuation, browse stronger upgrade options within about $5,000 above your car’s current value.</small>
+                <span class="addon-state">Unlocked after result</span>
+              </article>
+            </div>
           </section>
           <div class="actions">
             <button type="submit" class="button">Estimate Value</button>
@@ -248,10 +307,35 @@
 
       <section class="panel hidden-panel" id="results-detailed-report-panel">
         <div class="results-head">
-          <strong>Detailed Vehicle Report</strong>
+          <strong id="detailed-report-title">Detailed Vehicle Report</strong>
         </div>
         <div id="detailed-vehicle-report-output" class="detailed-report-wrap muted">
           Enable Detailed Vehicle Report to generate specs, reliability, ownership, and performance context.
+        </div>
+      </section>
+
+      <section class="panel hidden-panel" id="personal-upgrades-panel">
+        <div class="results-head">
+          <strong>Potential Upgrades</strong>
+        </div>
+        <div id="personal-upgrades-controls" class="comps-toolbar hidden-panel">
+          <div class="comps-toolbar-actions">
+            <label class="sort-select-wrap">
+              <span>Body Style</span>
+              <select id="upgrade-body-style-select">
+                <option value="">All body styles</option>
+              </select>
+            </label>
+            <label class="sort-select-wrap">
+              <span>Primary Focus</span>
+              <select id="upgrade-focus-select">
+                <option value="">All focuses</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div id="personal-upgrades-grid" class="bulk-results-grid personal-upgrades-grid muted">
+          Potential upgrades will appear here after a Personal Value evaluation.
         </div>
       </section>
 
@@ -276,6 +360,9 @@
           <a id="full-evaluation-link" class="proceed-button" href="{{ url_for('full_evaluation') }}">
             See If This Is a Good Buy &rarr;
           </a>
+          <button id="see-potential-upgrades-button" type="button" class="proceed-button hidden-panel">
+            See Potential Upgrades
+          </button>
         </div>
         <div id="main-favorite-status" class="muted"></div>
       </section>

@@ -172,6 +172,15 @@ function buildListingTitle(listing = {}) {
   ].filter(Boolean).join(" ").trim() || "Comparable listing";
 }
 
+function listingLocationText(listing = {}) {
+  if (listing.location_label) {
+    return listing.location_label;
+  }
+  const location = listing.location || {};
+  const cityState = [location.city, location.state].filter(Boolean).join(", ");
+  return cityState || location.zip || "";
+}
+
 function renderKeyValueGrid(title, entries, copy = "") {
   const rows = entries
     .filter(([, value]) => value !== null && value !== undefined && value !== "")
@@ -315,6 +324,7 @@ function renderComparableListings(parsed, matchedComps = []) {
       listing.mileage ? ["Mileage", formatMiles(listing.mileage)] : null,
       listing.adjusted_price ? ["Adjusted", listing.adjusted_price] : null,
       listing.source_label ? ["Source", listing.source_label] : null,
+      listingLocationText(listing) ? ["Location", listingLocationText(listing)] : null,
       listing.match_tier ? ["Match Tier", listing.match_tier] : null,
       listing.title_status ? ["Title", listing.title_status] : null,
     ]

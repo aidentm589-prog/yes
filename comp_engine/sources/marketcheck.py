@@ -70,6 +70,40 @@ class MarketCheckBaseAdapter(SourceAdapter):
         LOGGER.info("MarketCheck response: status=ok results=%s", len(normalized))
         return normalized
 
+    def health_check(self) -> dict[str, Any]:
+        health = super().health_check()
+        if not self.is_enabled():
+            return health
+        try:
+            payload = self.http_client.get_json(
+                self.endpoint,
+                params={
+                    "api_key": self.config.marketcheck_api_key,
+                    "rows": 1,
+                    "car_type": "used",
+                },
+                source_key=self.key,
+            )
+        except Exception as exc:  # noqa: BLE001
+            message = str(exc).lower()
+            health["status"] = "error"
+            if "401" in message or "403" in message or "auth" in message or "invalid" in message:
+                health["message"] = "auth failed"
+            elif "timeout" in message:
+                health["message"] = "timeout"
+            else:
+                health["message"] = f"bad response: {exc}"
+            return health
+
+        listings = payload.get("listings") or payload.get("data") or []
+        if isinstance(listings, list) and listings:
+            health["status"] = "ok"
+            health["message"] = "API key validated"
+        else:
+            health["status"] = "ok"
+            health["message"] = "no listings returned"
+        return health
+
     def normalize_listing(self, raw: dict[str, Any], query: VehicleQuery) -> NormalizedListing | None:
         dealer = raw.get("dealer") or {}
         build = raw.get("build") or {}

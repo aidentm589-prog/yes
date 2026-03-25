@@ -35,7 +35,7 @@ body::before {
 .shell {
   width: min(1120px, calc(100% - 2rem));
   margin: 0 auto;
-  padding: 7.8rem 0 4rem;
+  padding: 8.8rem 0 4rem;
 }
 
 .topbar {
@@ -45,21 +45,19 @@ body::before {
   right: 0;
   transform: none;
   z-index: 40;
-  width: min(1200px, 100%);
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
   display: grid;
   grid-template-columns: auto minmax(260px, 1fr) auto;
   align-items: center;
   gap: 1rem;
   padding: 0.9rem 1rem 0.95rem;
-  border: 1px solid rgba(116, 196, 255, 0.14);
-  border-top: 0;
-  border-radius: 0 0 28px 28px;
+  border-bottom: 1px solid rgba(116, 196, 255, 0.14);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.01)),
     rgba(7, 20, 46, 0.94);
   box-shadow:
-    0 18px 40px rgba(0, 0, 0, 0.24),
+    0 14px 30px rgba(0, 0, 0, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(18px);
 }
@@ -837,6 +835,24 @@ textarea {
   gap: 0.95rem;
 }
 
+.engine-choice-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.engine-choice-card {
+  min-height: 176px;
+  background:
+    radial-gradient(circle at top right, rgba(116, 196, 255, 0.18), transparent 32%),
+    radial-gradient(circle at bottom left, rgba(59, 120, 214, 0.18), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 70%),
+    rgba(8, 24, 58, 0.5);
+}
+
+.engine-choice-card strong {
+  font-size: 1.66rem;
+}
+
 .model-choice-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: stretch;
@@ -1425,6 +1441,12 @@ textarea:focus {
 .bulk-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.personal-upgrades-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 1rem;
 }
 
@@ -2684,8 +2706,8 @@ textarea:focus {
   }
 
   .topbar {
-    width: calc(100% - 1rem);
-    top: 0.5rem;
+    width: 100%;
+    top: 0;
     grid-template-columns: 1fr;
     gap: 0.75rem;
     padding: 0.75rem;

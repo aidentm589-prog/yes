@@ -148,6 +148,7 @@ class AccountService:
         is_admin_access = self.is_admin_user(user)
         tier_label = "ADMIN" if is_admin_access else rule["label"]
         can_use_zippy = True
+        can_use_personal_engine = True
         can_use_individual_model = is_admin_access or int(user["tier"]) >= 2
         can_use_bulk_model = is_admin_access or int(user["tier"]) >= 3
         permissions = []
@@ -172,6 +173,7 @@ class AccountService:
             "credit_balance": user["credit_balance"],
             "credits_label": "Unlimited" if user.get("is_unlimited") else str(user.get("credit_balance", 0)),
             "has_bulk_access": bool(user.get("has_bulk_access")),
+            "can_use_personal_engine": can_use_personal_engine,
             "can_use_zippy_model": can_use_zippy,
             "can_use_individual_model": can_use_individual_model,
             "can_use_bulk_model": can_use_bulk_model,
@@ -381,10 +383,10 @@ class AccountService:
 
     def can_run_individual_evaluation(self, user: dict[str, Any], payload: dict[str, Any]) -> PermissionDecision:
         query = parse_vehicle_query(payload)
-        if not query.minimum_details_present():
+        if not self._query_has_minimum_eval_input(query):
             return PermissionDecision(
                 allowed=False,
-                message="Please include the year, make, model, and mileage before running an evaluation.",
+                message="Please include the year, make, model, and mileage or provide a valid VIN before running an evaluation.",
                 status_code=400,
                 user=user,
             )
@@ -392,10 +394,10 @@ class AccountService:
 
     def can_run_zippy_evaluation(self, user: dict[str, Any], payload: dict[str, Any]) -> PermissionDecision:
         query = parse_vehicle_query(payload)
-        if not (query.year and query.make and query.model):
+        if not ((query.year and query.make and query.model) or self._looks_like_valid_vin(query.vin)):
             return PermissionDecision(
                 allowed=False,
-                message="Please include at least the year, make, and model before running Zippy.",
+                message="Please include at least the year, make, and model or provide a valid VIN before running Zippy.",
                 status_code=400,
                 user=user,
             )
@@ -413,6 +415,17 @@ class AccountService:
                 user=user,
             )
         return self._permission_for_mode(user, "bulk", payload)
+
+    def can_run_personal_evaluation(self, user: dict[str, Any], payload: dict[str, Any]) -> PermissionDecision:
+        query = parse_vehicle_query(payload)
+        if not query.minimum_details_present():
+            return PermissionDecision(
+                allowed=False,
+                message="Please include the year, make, model, and mileage before running Personal Value Beta V1.",
+                status_code=400,
+                user=user,
+            )
+        return self._permission_for_mode(user, "beta_v1", payload)
 
     def authorize_carvana_payout_start(self, user_id: int | None) -> PermissionDecision:
         user = self.get_user_by_id(user_id)
@@ -444,7 +457,7 @@ class AccountService:
         decision.user = self.get_user_by_id(user["id"]) or user
         return decision
 
-    def authorize_evaluation_start(self, user_id: int | None, mode: str, payload: dict[str, Any]) -> PermissionDecision:
+    def authorize_evaluation_start(self, user_id: int | None, engine: str, mode: str, payload: dict[str, Any]) -> PermissionDecision:
         user = self.get_user_by_id(user_id)
         if not user:
             return PermissionDecision(
@@ -459,7 +472,9 @@ class AccountService:
                 status_code=403,
                 user=user,
             )
-        if mode == "bulk":
+        if engine == "personal":
+            decision = self.can_run_personal_evaluation(user, payload)
+        elif mode == "bulk":
             decision = self.can_run_bulk_evaluation(user, payload)
         elif mode == "zippy":
             decision = self.can_run_zippy_evaluation(user, payload)
@@ -618,6 +633,21 @@ class AccountService:
         cost = BULK_COST if mode == "bulk" else INDIVIDUAL_COST
         tier = int(user["tier"])
         is_admin = self.is_admin_user(user)
+        if mode == "beta_v1":
+            message = (
+                "You need 1 available credit for Personal Value Beta V1"
+                + (" plus 1 more credit for Detailed Car Summary." if self._detailed_report_enabled(payload) else ".")
+            )
+            if self._detailed_report_enabled(payload):
+                if not self.tier_rule(int(user["tier"])).get("has_addon_access"):
+                    return PermissionDecision(
+                        allowed=False,
+                        message="Your current tier does not include juicy add-ons yet.",
+                        status_code=403,
+                        user=user,
+                    )
+                cost += DETAILED_REPORT_COST
+            return self._permission_for_cost(user, cost, message)
         if mode == "individual" and not (is_admin or tier >= 2):
             return PermissionDecision(
                 allowed=False,
@@ -674,6 +704,17 @@ class AccountService:
     def _detailed_report_enabled(self, payload: dict[str, Any]) -> bool:
         raw = str(payload.get("detailed_vehicle_report") or payload.get("include_detailed_vehicle_report") or "").strip().lower()
         return raw in {"1", "true", "yes", "on", "enabled"}
+
+    def _looks_like_valid_vin(self, vin: str) -> bool:
+        normalized = str(vin or "").strip().upper()
+        if len(normalized) != 17 or "{" in normalized or "}" in normalized:
+            return False
+        return all(char in "0123456789ABCDEFGHJKLMNPRSTUVWXYZ" for char in normalized)
+
+    def _query_has_minimum_eval_input(self, query: Any) -> bool:
+        if query.minimum_details_present():
+            return True
+        return bool((query.year and query.make and query.model) or self._looks_like_valid_vin(getattr(query, "vin", "")))
 
     def _money_to_float(self, value: Any) -> float | None:
         digits = "".join(ch for ch in str(value or "") if ch.isdigit() or ch in ".-")

@@ -5,10 +5,18 @@ const vehicleInputHelper = document.getElementById("vehicle-input-helper");
 const mileageField = document.getElementById("mileage-field");
 const listingPriceField = document.getElementById("listing-price-field");
 const rebuiltToggleRow = document.getElementById("rebuilt-toggle-row");
+const evaluationEngineSelect = document.getElementById("evaluation-engine");
+const evaluationEngineCards = document.getElementById("evaluation-engine-cards");
 const evaluationModeSelect = document.getElementById("evaluation-mode");
+const personalEvaluationModeSelect = document.getElementById("personal-evaluation-mode");
+const resellModelShell = document.getElementById("resell-model-shell");
+const resellAddonShell = document.getElementById("resell-addon-shell");
+const personalModelShell = document.getElementById("personal-model-shell");
+const personalAddonShell = document.getElementById("personal-addon-shell");
 const detailedVehicleReportSelect = document.getElementById("detailed-vehicle-report");
 const evaluationModeCards = document.getElementById("evaluation-mode-cards");
 const detailedReportCard = document.getElementById("detailed-report-card");
+const personalDetailedReportCard = document.getElementById("personal-detailed-report-card");
 const statusMessage = document.getElementById("status-message");
 const statusNotes = document.getElementById("status-notes");
 const sessionBadge = document.getElementById("session-badge");
@@ -34,7 +42,13 @@ const resultsPricingPanel = document.getElementById("results-pricing-panel");
 const resultsCompsPanel = document.getElementById("results-comps-panel");
 const resultsConditionsPanel = document.getElementById("results-conditions-panel");
 const resultsDetailedReportPanel = document.getElementById("results-detailed-report-panel");
+const detailedReportTitle = document.getElementById("detailed-report-title");
 const detailedVehicleReportOutput = document.getElementById("detailed-vehicle-report-output");
+const personalUpgradesPanel = document.getElementById("personal-upgrades-panel");
+const personalUpgradesControls = document.getElementById("personal-upgrades-controls");
+const personalUpgradesGrid = document.getElementById("personal-upgrades-grid");
+const upgradeBodyStyleSelect = document.getElementById("upgrade-body-style-select");
+const upgradeFocusSelect = document.getElementById("upgrade-focus-select");
 const bulkResultsPanel = document.getElementById("bulk-results-panel");
 const bulkResultsSummary = document.getElementById("bulk-results-summary");
 const bulkResultsGrid = document.getElementById("bulk-results-grid");
@@ -49,6 +63,7 @@ const previewEstimatedProfit = document.getElementById("preview-estimated-profit
 const previewConfidence = document.getElementById("preview-confidence");
 const previewRisk = document.getElementById("preview-risk");
 const favoriteFromMain = document.getElementById("favorite-from-main");
+const seePotentialUpgradesButton = document.getElementById("see-potential-upgrades-button");
 const mainFavoriteStatus = document.getElementById("main-favorite-status");
 const stickyPortfolioButton = document.querySelector(".sticky-portfolio-button");
 const compSortSelect = document.getElementById("comp-sort-select");
@@ -64,6 +79,7 @@ let currentComparableListings = [];
 let showingAllComparableListings = false;
 let currentMileageBands = [];
 let currentMainEvaluation = null;
+let currentUpgradePayload = null;
 let loadingProgressTimer = null;
 let loadingProgressValue = 0;
 let currentCompSort = "closest_mileage";
@@ -113,6 +129,47 @@ const STAT_HELP = {
   selected_mileage_range: "The currently selected mileage band used for the mileage-average breakout.",
 };
 
+const HELP_ENABLED_KEYS = new Set([
+  "market_value",
+  "safe_buy_value",
+  "expected_resale_value",
+  "estimated_profit",
+  "imperfect_title_value",
+  "condition_range",
+  "average_price_near_this_mileage",
+  "listing_price_vs_avg_near_mileage",
+  "clean_title_benchmark",
+  "clean_title_range",
+  "rebuilt_title_range",
+  "average_rebuilt_value",
+  "value_difference",
+  "average_difference",
+  "rebuilt_safe_buy_window",
+  "damage_factor",
+  "provided_price",
+  "suggested_target_price",
+  "market_position",
+  "estimated_profit_at_asking",
+  "negotiation_window",
+  "takeaway",
+  "average_listing_price",
+  "comparable_listings_used",
+  "selected_mileage_range",
+  "confidence_score",
+  "risk",
+  "reliability_rating",
+  "maintenance_cost_estimate",
+  "typical_lifespan_miles",
+  "insurance_estimate",
+  "common_problems",
+  "msrp",
+  "mpg",
+  "aspiration",
+  "horsepower_hp",
+  "torque_tq",
+  "060_time",
+]);
+
 const vehicleFields = [
   ["year", "Year"],
   ["make", "Make"],
@@ -158,6 +215,12 @@ function statHelpText(label = "", explicitKey = "") {
 }
 
 function renderLabelWithHelp(label, explicitKey = "") {
+  const normalizedExplicit = normalizeStatHelpKey(explicitKey);
+  const normalizedLabel = normalizeStatHelpKey(label);
+  const helpEligible = HELP_ENABLED_KEYS.has(normalizedExplicit) || HELP_ENABLED_KEYS.has(normalizedLabel);
+  if (!helpEligible) {
+    return `<span>${escapeHtml(label)}</span>`;
+  }
   const helpText = statHelpText(label, explicitKey);
   return `
     <span class="stat-label-wrap">
@@ -222,6 +285,7 @@ function tierHoverCopy(status) {
 
 function buildEvaluationCacheFingerprint(payload = {}) {
   return JSON.stringify({
+    evaluation_engine: String(payload.evaluation_engine || "resell").trim().toLowerCase(),
     evaluation_mode: String(payload.evaluation_mode || "zippy").trim().toLowerCase(),
     vehicle_input: String(payload.vehicle_input || "").trim().toLowerCase(),
     mileage: String(payload.mileage || "").trim(),
@@ -257,6 +321,7 @@ function setResultsVisible(visible) {
     resultsCompsPanel,
     resultsConditionsPanel,
     resultsDetailedReportPanel,
+    personalUpgradesPanel,
     dealTransitionPanel,
   ].forEach((element) => {
     if (!element) {
@@ -277,6 +342,13 @@ function setBulkResultsVisible(visible) {
 function hideAllResultPanels() {
   setResultsVisible(false);
   setBulkResultsVisible(false);
+  seePotentialUpgradesButton?.classList.add("hidden-panel");
+  personalUpgradesControls?.classList.add("hidden-panel");
+  if (personalUpgradesGrid) {
+    personalUpgradesGrid.classList.add("muted");
+    personalUpgradesGrid.textContent = "Potential upgrades will appear here after a Personal Value evaluation.";
+  }
+  currentUpgradePayload = null;
 }
 
 function showStatusOnly(message, badge = "Needs Data") {
@@ -297,7 +369,14 @@ function isBulkMode() {
   return (evaluationModeSelect?.value || "individual") === "bulk";
 }
 
+function selectedEvaluationEngine() {
+  return evaluationEngineSelect?.value || "";
+}
+
 function selectedEvaluationMode() {
+  if (selectedEvaluationEngine() === "personal") {
+    return personalEvaluationModeSelect?.value || "beta_v1";
+  }
   return evaluationModeSelect?.value || "zippy";
 }
 
@@ -342,6 +421,19 @@ function syncAddonLockState(status) {
       detailedReportCard.setAttribute("data-lock-message", "Your subscription level does not qualify for juicy add-ons yet.");
     }
   }
+  if (personalDetailedReportCard) {
+    personalDetailedReportCard.classList.toggle("is-locked", addonLocked);
+    personalDetailedReportCard.setAttribute("aria-disabled", addonLocked ? "true" : "false");
+    if (addonLocked) {
+      personalDetailedReportCard.setAttribute("data-lock-message", "Your subscription level does not qualify for Personal Value add-ons yet.");
+    }
+  }
+  if (seePotentialUpgradesButton) {
+    seePotentialUpgradesButton.disabled = addonLocked;
+    seePotentialUpgradesButton.title = addonLocked
+      ? "Your subscription level does not qualify for Personal Value add-ons yet."
+      : "";
+  }
 }
 
 function setDisabledForField(container, disabled) {
@@ -357,12 +449,18 @@ function setDisabledForField(container, disabled) {
 }
 
 function updateEvaluationModeUI() {
+  const engine = selectedEvaluationEngine();
   const mode = selectedEvaluationMode();
   const bulkMode = mode === "bulk";
   const zippyMode = mode === "zippy";
+  const personalEngine = engine === "personal";
+  resellModelShell?.classList.toggle("hidden-panel", engine !== "resell");
+  resellAddonShell?.classList.toggle("hidden-panel", engine !== "resell");
+  personalModelShell?.classList.toggle("hidden-panel", !personalEngine);
+  personalAddonShell?.classList.toggle("hidden-panel", !personalEngine);
   if (vehicleInputLabel) {
-    vehicleInputLabel.textContent = bulkMode ? "Paste the cars" : zippyMode ? "Quick vehicle input" : "Describe the car";
-    vehicleInputLabel.classList.toggle("visually-hidden", !(bulkMode || zippyMode));
+    vehicleInputLabel.textContent = bulkMode ? "Paste the cars" : zippyMode ? "Quick vehicle input" : personalEngine ? "Describe your car" : "Describe the car";
+    vehicleInputLabel.classList.toggle("visually-hidden", !(bulkMode || zippyMode || personalEngine));
   }
   if (vehicleInputHelper) {
     vehicleInputHelper.classList.toggle("hidden-panel", !bulkMode);
@@ -373,6 +471,8 @@ function updateEvaluationModeUI() {
       ? "Paste the cars"
       : zippyMode
         ? "Year make model, a rough trim, a VIN, or a listing link..."
+      : personalEngine
+        ? "Describe your car or paste a listing link..."
       : "Describe the car or paste a link…";
   }
   mileageField?.classList.toggle("hidden-panel", bulkMode);
@@ -383,16 +483,25 @@ function updateEvaluationModeUI() {
   setDisabledForField(rebuiltToggleRow, bulkMode);
   const mileageInput = document.getElementById("vehicle-mileage");
   if (mileageInput) {
-    mileageInput.required = !bulkMode && !zippyMode;
+    mileageInput.required = personalEngine || (!bulkMode && !zippyMode);
     if (bulkMode) {
       mileageInput.setCustomValidity("");
     }
   }
-  setChoiceCardSelection("evaluation-mode", mode);
+  setChoiceCardSelection("evaluation-engine", engine);
+  setChoiceCardSelection("evaluation-mode", engine === "resell" ? mode : "");
+  setChoiceCardSelection("personal-model", engine === "personal" ? "beta_v1" : "");
   setChoiceCardSelection(
     "detailed-report",
     (detailedVehicleReportSelect?.value || "off") === "on" ? "on" : "off",
   );
+  setChoiceCardSelection(
+    "personal-detailed-report",
+    (detailedVehicleReportSelect?.value || "off") === "on" ? "on" : "off",
+  );
+  if (seePotentialUpgradesButton) {
+    seePotentialUpgradesButton.classList.toggle("hidden-panel", !personalEngine || !currentMainEvaluation || currentMainEvaluation.evaluation_engine !== "personal");
+  }
 }
 
 function setLoadingVisible(visible, message = "", title = "", kicker = "") {
@@ -921,6 +1030,11 @@ function renderDetailedReport(report) {
   if (!detailedVehicleReportOutput || !resultsDetailedReportPanel) {
     return;
   }
+  if (detailedReportTitle) {
+    detailedReportTitle.textContent = selectedEvaluationEngine() === "personal"
+      ? "Detailed Car Summary"
+      : "Detailed Vehicle Report";
+  }
 
   if (!report?.requested) {
     detailedVehicleReportOutput.textContent = "Enable Detailed Vehicle Report to generate specs, reliability, ownership, and performance context.";
@@ -955,6 +1069,91 @@ function renderDetailedReport(report) {
         </div>
       </article>
     `).join("");
+}
+
+function renderPersonalValueResult(resultBody) {
+  setResultsVisible(true);
+  resultsTitleImpactPanel?.classList.add("hidden-panel");
+  resultsPricingPanel?.classList.add("hidden-panel");
+  resultsConditionsPanel?.classList.add("hidden-panel");
+  bulkResultsPanel?.classList.add("hidden-panel");
+  const personal = resultBody.personal_value || {};
+  renderVehicleBrief(resultBody.parsed_details, resultBody.vehicle_summary);
+  renderConditionValues(null);
+  renderMileagePriceBands(null);
+  renderOverallRange({
+    estimated_personal_market_value: personal.estimated_personal_market_value || "",
+    average_price_of_10_closest_mileage_comps: personal.average_price_of_10_closest_mileage_comps || "",
+    comp_count_used: personal.comp_count_used || "",
+    clean_title_benchmark: personal.clean_title_benchmark || "",
+  });
+  renderAveragePriceNearMileage(null);
+  renderMileagePriceDelta(null, null);
+  renderTitleImpact(null);
+  renderListingPriceAnalysis(null);
+  renderDetailedReport(resultBody.detailed_vehicle_report);
+  showingAllComparableListings = false;
+  setComparableListings(resultBody.sample_listings || [], resultBody.matched_comps || []);
+  dealTransitionPanel?.classList.remove("hidden-panel");
+  favoriteFromMain?.classList.remove("hidden-panel");
+  fullEvaluationLink?.classList.add("hidden-panel");
+  seePotentialUpgradesButton?.classList.remove("hidden-panel");
+  currentUpgradePayload = {
+    baselineValue: resultBody.upgrade_baseline_value || personal.average_price_of_10_closest_mileage_comps || personal.estimated_personal_market_value,
+  };
+}
+
+function renderPotentialUpgrades(payload = {}) {
+  if (!personalUpgradesPanel || !personalUpgradesGrid || !personalUpgradesControls) {
+    return;
+  }
+  personalUpgradesPanel.classList.remove("hidden-panel");
+  const filters = payload.filters || {};
+  if (upgradeBodyStyleSelect) {
+    const styles = Array.isArray(filters.body_styles) ? filters.body_styles : [];
+    upgradeBodyStyleSelect.innerHTML = [`<option value="">All body styles</option>`, ...styles.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`)].join("");
+    upgradeBodyStyleSelect.value = filters.selected_body_style || "";
+  }
+  if (upgradeFocusSelect) {
+    const focuses = Array.isArray(filters.focuses) ? filters.focuses : [];
+    upgradeFocusSelect.innerHTML = [`<option value="">All focuses</option>`, ...focuses.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`)].join("");
+    upgradeFocusSelect.value = filters.selected_focus || "";
+  }
+  personalUpgradesControls.classList.remove("hidden-panel");
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  if (!items.length) {
+    personalUpgradesGrid.classList.add("muted");
+    personalUpgradesGrid.textContent = "No strong upgrade candidates were found in the current range yet.";
+    return;
+  }
+  personalUpgradesGrid.classList.remove("muted");
+  personalUpgradesGrid.innerHTML = items.map((item) => {
+    const location = item.location_label || [item.location?.city, item.location?.state].filter(Boolean).join(", ");
+    const focuses = Array.isArray(item.focus_tags) ? item.focus_tags.join(" • ") : "";
+    const title = [item.year, item.make, item.model, item.trim].filter(Boolean).join(" ").trim() || "Upgrade candidate";
+    const safeUrl = typeof item.url === "string" && /^https?:\/\//.test(item.url) ? item.url : "";
+    const inner = `
+      <div class="listing-card-head">
+        <div>
+          <strong class="listing-card-title">${escapeHtml(title)}</strong>
+          <span class="listing-card-hover">${escapeHtml(safeUrl ? "Open listing" : "Upgrade candidate")}</span>
+        </div>
+        <div class="listing-price-badge">
+          <span class="listing-price-label">Price</span>
+          <span class="listing-price">${escapeHtml(item.price || item.adjusted_price || "")}</span>
+        </div>
+      </div>
+      <div class="listing-meta">
+        ${location ? `<div class="listing-meta-line"><span>Location</span><strong>${escapeHtml(location)}</strong></div>` : ""}
+        ${item.body_style ? `<div class="listing-meta-line"><span>Body Style</span><strong>${escapeHtml(item.body_style)}</strong></div>` : ""}
+        ${focuses ? `<div class="listing-meta-line"><span>Primary Focus</span><strong>${escapeHtml(focuses)}</strong></div>` : ""}
+        ${item.source_label ? `<div class="listing-meta-line"><span>Source</span><strong>${escapeHtml(item.source_label)}</strong></div>` : ""}
+      </div>
+    `;
+    return safeUrl
+      ? `<a class="listing-card listing-card-link" href="${escapeHtml(safeUrl)}" target="_blank" rel="noreferrer">${inner}</a>`
+      : `<article class="listing-card">${inner}</article>`;
+  }).join("");
 }
 
 function renderCompactDetailedReport(report) {
@@ -1101,6 +1300,10 @@ function normalizeComparableListing(listing) {
     mileageValue: listing.mileage ? Number(listing.mileage) : parseMoney(String(miles).replace(/[^\d]/g, "")),
     trim: listing.trim || "",
     dealer: listing.dealer || listing.source_label || listing.source || "",
+    location: listing.location_label
+      || [listing.location?.city, listing.location?.state].filter(Boolean).join(", ")
+      || listing.location?.zip
+      || "",
     sourceUrl: listing.source_url || listing.url || "",
     url: listing.url || "",
     originalIndex: typeof listing.originalIndex === "number" ? listing.originalIndex : 0,
@@ -1210,6 +1413,14 @@ function renderSampleListings(listings) {
             <div class="listing-meta-line">
               <span>Source</span>
               <strong>${escapeHtml(listing.dealer || "")}</strong>
+            </div>
+          `
+          : "",
+        listing.location
+          ? `
+            <div class="listing-meta-line">
+              <span>Location</span>
+              <strong>${escapeHtml(listing.location)}</strong>
             </div>
           `
           : "",
@@ -1371,6 +1582,9 @@ function buildStatusMessage(result) {
   if (result.body?.mode === "bulk") {
     return result.body.message || "Bulk evaluation complete.";
   }
+  if (result.body?.evaluation_engine === "personal") {
+    return result.body.message || "Personal value evaluation complete.";
+  }
   if (result.body?.mode === "zippy") {
     const count = result.body.comparable_count || 0;
     return count
@@ -1389,7 +1603,23 @@ function buildStatusMessage(result) {
 }
 
 function buildNotes(result) {
-  return [];
+  const diagnostics = Array.isArray(result.body?.source_health) ? result.body.source_health : [];
+  return diagnostics
+    .filter((item) => item?.enabled)
+    .map((item) => {
+      const normalizedCount = Number(item.normalized_count || item.count || 0);
+      const rawCount = Number(item.raw_count || 0);
+      const status = item.status || "unknown";
+      const parts = [
+        `${item.label || item.key}: ${status}`,
+        `raw ${rawCount}`,
+        `normalized ${normalizedCount}`,
+      ];
+      if (item.message) {
+        parts.push(item.message);
+      }
+      return parts.join(" • ");
+    });
 }
 
 function renderZippyResult(resultBody) {
@@ -1619,18 +1849,57 @@ async function saveMainEvaluationToPortfolio() {
   }
 }
 
+async function loadPotentialUpgrades() {
+  if (!currentUpgradePayload?.baselineValue) {
+    return;
+  }
+  if (seePotentialUpgradesButton?.disabled) {
+    window.alert(seePotentialUpgradesButton.getAttribute("title") || "Your subscription level does not qualify for Personal Value add-ons yet.");
+    return;
+  }
+  if (personalUpgradesPanel) {
+    personalUpgradesPanel.classList.remove("hidden-panel");
+  }
+  if (personalUpgradesGrid) {
+    personalUpgradesGrid.classList.add("muted");
+    personalUpgradesGrid.textContent = "Searching for strong upgrade candidates...";
+  }
+  try {
+    const result = await postJson("/api/potential-upgrades", {
+      baseline_value: currentUpgradePayload.baselineValue,
+      body_style: upgradeBodyStyleSelect?.value || "",
+      focus: upgradeFocusSelect?.value || "",
+    });
+    if (!result.body?.ok) {
+      throw new Error(result.body?.message || "Unable to load potential upgrades.");
+    }
+    renderPotentialUpgrades(result.body);
+  } catch (error) {
+    if (personalUpgradesGrid) {
+      personalUpgradesGrid.classList.add("muted");
+      personalUpgradesGrid.textContent = error instanceof Error ? error.message : "Unable to load potential upgrades.";
+    }
+  }
+}
+
 form?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const mileageInput = document.getElementById("vehicle-mileage");
+  const engine = selectedEvaluationEngine();
   const mode = selectedEvaluationMode();
   const bulkMode = mode === "bulk";
   const zippyMode = mode === "zippy";
+  const personalEngine = engine === "personal";
+  if (!engine) {
+    window.alert("Choose an Evaluation Engine before running the evaluation.");
+    return;
+  }
   if (mileageInput) {
     mileageInput.setCustomValidity("");
   }
   if (!bulkMode && !form.reportValidity()) {
-    if (!zippyMode && mileageInput && !String(mileageInput.value || "").trim()) {
-      mileageInput.setCustomValidity("Mileage is required to run the evaluation.");
+    if ((personalEngine || !zippyMode) && mileageInput && !String(mileageInput.value || "").trim()) {
+      mileageInput.setCustomValidity(personalEngine ? "Mileage is required for Personal Value Beta V1." : "Mileage is required to run the evaluation.");
       mileageInput.reportValidity();
     }
     return;
@@ -1648,11 +1917,13 @@ form?.addEventListener("submit", async (event) => {
     true,
     bulkMode
       ? "Parsing vehicles, evaluating each one, and ranking the best deals in the batch."
+      : personalEngine
+        ? "Gathering closest-mileage comps and pricing what your car should realistically sell for."
       : zippyMode
         ? "Scraping live comps, averaging the market, and generating the fast buy values."
       : "Building comps, checking pricing, and calculating your potential deal.",
-    bulkMode ? "Ranking the strongest deals" : zippyMode ? "Running Zippy" : "Building comps and pricing",
-    bulkMode ? "Evaluating the batch" : zippyMode ? "Evaluating the deal" : "Evaluating the deal",
+    bulkMode ? "Ranking the strongest deals" : personalEngine ? "Running Personal Value" : zippyMode ? "Running Zippy" : "Building comps and pricing",
+    bulkMode ? "Evaluating the batch" : personalEngine ? "Valuing your car" : zippyMode ? "Evaluating the deal" : "Evaluating the deal",
   );
   startLoadingProgress();
   sessionBadge.textContent = "Running";
@@ -1660,9 +1931,11 @@ form?.addEventListener("submit", async (event) => {
 
   const payload = {
     ...Object.fromEntries(new FormData(form).entries()),
+    evaluation_engine: engine,
+    evaluation_mode: mode,
     force_refresh: true,
   };
-  if (!bulkMode) {
+  if (!bulkMode && !personalEngine) {
     updateFullEvaluationLink(payload);
   }
   try {
@@ -1713,6 +1986,24 @@ form?.addEventListener("submit", async (event) => {
       renderTitleImpact(null);
       renderListingPriceAnalysis(null);
       renderDetailedReport(null);
+      return;
+    }
+
+    if (result.body.evaluation_engine === "personal") {
+      currentMainEvaluation = result.body;
+      setLoadingVisible(false);
+      stopLoadingProgress();
+      sessionBadge.textContent = `${result.body.personal_value?.comp_count_used || result.body.comparable_count || 0} comps`;
+      statusMessage.textContent = buildStatusMessage(result);
+      setNotes(buildNotes(result));
+      renderPersonalValueResult(result.body);
+      if (composerPanel) {
+        composerPanel.classList.add("hidden-panel");
+      }
+      window.requestAnimationFrame(() => {
+        const top = (resultsStatusPanel?.getBoundingClientRect().top || 0) + window.scrollY - 72;
+        window.scrollTo({ top, behavior: "smooth" });
+      });
       return;
     }
 
@@ -1840,6 +2131,24 @@ initBillingToggle();
 initSubscriptionSelection();
 
 favoriteFromMain?.addEventListener("click", saveMainEvaluationToPortfolio);
+evaluationEngineCards?.addEventListener("click", (event) => {
+  const card = event.target.closest('[data-choice-group="evaluation-engine"]');
+  if (!card || !evaluationEngineSelect) {
+    return;
+  }
+  const value = card.getAttribute("data-value") || "";
+  evaluationEngineSelect.value = value;
+  if (value === "personal") {
+    if (personalEvaluationModeSelect) {
+      personalEvaluationModeSelect.value = "beta_v1";
+    }
+  } else if (evaluationModeSelect && !evaluationModeSelect.value) {
+    evaluationModeSelect.value = "zippy";
+  }
+  updateEvaluationModeUI();
+  hideAllResultPanels();
+  currentMainEvaluation = null;
+});
 evaluationModeCards?.addEventListener("click", (event) => {
   const card = event.target.closest('[data-choice-group="evaluation-mode"]');
   if (!card || !evaluationModeSelect) {
@@ -1867,11 +2176,38 @@ detailedReportCard?.addEventListener("click", () => {
   setChoiceCardSelection("detailed-report", detailedVehicleReportSelect.value);
 });
 
+personalDetailedReportCard?.addEventListener("click", () => {
+  if (!detailedVehicleReportSelect) {
+    return;
+  }
+  if (personalDetailedReportCard.classList.contains("is-locked")) {
+    window.alert(personalDetailedReportCard.getAttribute("data-lock-message") || "Your subscription level does not qualify for Personal Value add-ons yet.");
+    return;
+  }
+  detailedVehicleReportSelect.value = detailedVehicleReportSelect.value === "on" ? "off" : "on";
+  setChoiceCardSelection("personal-detailed-report", detailedVehicleReportSelect.value);
+});
+
 evaluationModeSelect?.addEventListener("change", () => {
   updateEvaluationModeUI();
   hideAllResultPanels();
   currentMainEvaluation = null;
 });
+
+evaluationEngineSelect?.addEventListener("change", () => {
+  if (selectedEvaluationEngine() === "personal") {
+    personalEvaluationModeSelect && (personalEvaluationModeSelect.value = "beta_v1");
+  } else if (evaluationModeSelect && !evaluationModeSelect.value) {
+    evaluationModeSelect.value = "zippy";
+  }
+  updateEvaluationModeUI();
+  hideAllResultPanels();
+  currentMainEvaluation = null;
+});
+
+seePotentialUpgradesButton?.addEventListener("click", loadPotentialUpgrades);
+upgradeBodyStyleSelect?.addEventListener("change", loadPotentialUpgrades);
+upgradeFocusSelect?.addEventListener("change", loadPotentialUpgrades);
 
 if (form) {
   updateEvaluationModeUI();

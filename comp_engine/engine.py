@@ -56,6 +56,9 @@ class VehicleCompsEngine:
 
     def evaluate(self, payload: dict[str, Any]) -> dict[str, Any]:
         payload = dict(payload)
+        engine_type = str(payload.get("evaluation_engine", "resell") or "resell").strip().lower()
+        if engine_type == "personal":
+            return self._evaluate_personal_value(payload)
         mode = str(payload.get("evaluation_mode", "")).strip().lower()
         if mode == "bulk":
             return self.run_bulk_evaluation(payload)
@@ -65,6 +68,7 @@ class VehicleCompsEngine:
 
     def _evaluate_single(self, payload: dict[str, Any]) -> dict[str, Any]:
         payload = dict(payload)
+        vin_only_lookup = self._is_vin_only_lookup(payload)
         include_detailed_report = self.detailed_reports.should_generate_detailed_vehicle_report(payload)
         vehicle_input = str(payload.get("vehicle_input", "")).strip()
         if vehicle_input:
@@ -97,7 +101,7 @@ class VehicleCompsEngine:
             if cached:
                 return cached
 
-        source_results = self._run_sources(query)
+        source_results = self._run_sources(query, preferred_keys=self._preferred_source_keys_for_query(vin_only_lookup))
         deduped = self._dedupe_listings(
             [
                 listing
@@ -125,6 +129,7 @@ class VehicleCompsEngine:
 
     def _evaluate_zippy(self, payload: dict[str, Any]) -> dict[str, Any]:
         payload = dict(payload)
+        vin_only_lookup = self._is_vin_only_lookup(payload)
         vehicle_input = str(payload.get("vehicle_input", "")).strip()
         if vehicle_input:
             augmented_input, extracted_pages = self.link_extractor.augment_vehicle_input(vehicle_input)
@@ -154,7 +159,7 @@ class VehicleCompsEngine:
                 "assumptions": self._assumptions(query, enabled_source_keys),
             }
 
-        source_results = self._run_sources(query)
+        source_results = self._run_sources(query, preferred_keys=self._preferred_source_keys_for_query(vin_only_lookup))
         deduped = self._dedupe_listings([
             listing
             for result in source_results
@@ -190,6 +195,7 @@ class VehicleCompsEngine:
             "excellent_buy_price": money(anchor * 0.84) if anchor else "",
         }
         return {
+            "evaluation_engine": "resell",
             "mode": "zippy",
             "status": "complete",
             "provider": "Multi-source vehicle comps engine",
@@ -202,6 +208,112 @@ class VehicleCompsEngine:
             "message": "Zippy scraped comps, averaged the market, and generated fast buy bands.",
             "assumptions": self._assumptions(query, enabled_source_keys),
         }
+
+    def _evaluate_personal_value(self, payload: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(payload)
+        vin_only_lookup = self._is_vin_only_lookup(payload)
+        include_detailed_report = self.detailed_reports.should_generate_detailed_vehicle_report(payload)
+        vehicle_input = str(payload.get("vehicle_input", "")).strip()
+        if vehicle_input:
+            augmented_input, extracted_pages = self.link_extractor.augment_vehicle_input(vehicle_input)
+            payload["vehicle_input"] = augmented_input
+            if extracted_pages:
+                payload["custom_listings"] = payload.get("custom_listings") or []
+                if not payload.get("asking_price"):
+                    for extracted in extracted_pages:
+                        asking_price = extracted.get("asking_price")
+                        if asking_price:
+                            payload["asking_price"] = asking_price
+                            break
+        query = parse_vehicle_query(payload)
+        self._apply_vin_decode(query)
+        enabled_source_keys = [adapter.key for adapter in self.adapters if adapter.is_enabled()]
+
+        if not query.minimum_details_present():
+            return {
+                "evaluation_engine": "personal",
+                "mode": "beta_v1",
+                "status": "needs_more_data",
+                "provider": "Multi-source vehicle comps engine",
+                "vehicle_summary": self._vehicle_summary(query),
+                "parsed_details": self._query_dict(query),
+                "personal_value": {},
+                "comparable_count": 0,
+                "matched_comps": [],
+                "sample_listings": [],
+                "source_breakdown": [],
+                "source_health": [],
+                "message": "Please include the year, make, model, and mileage to value what your car should realistically sell for.",
+                "assumptions": self._assumptions(query, enabled_source_keys),
+            }
+
+        source_results = self._run_sources(query, preferred_keys=self._preferred_source_keys_for_query(vin_only_lookup))
+        deduped = self._dedupe_listings([
+            listing
+            for result in source_results
+            for listing in result.normalized_listings
+        ])
+        deduped = self._decode_listing_vins(query, deduped)
+        included, excluded = self._score_and_filter(query, deduped)
+        included = self._enrich_top_listings(query, included)
+        included = self._decode_listing_vins(query, included)
+        included, more_excluded = self._score_and_filter(query, included)
+        excluded.extend(more_excluded)
+
+        valid = [
+            listing for listing in included
+            if listing.mileage is not None and self._listing_market_price(listing) is not None
+        ]
+        if not valid:
+            return {
+                "evaluation_engine": "personal",
+                "mode": "beta_v1",
+                "status": "needs_more_data",
+                "provider": "Multi-source vehicle comps engine",
+                "vehicle_summary": self._vehicle_summary(query),
+                "parsed_details": self._query_dict(query),
+                "personal_value": {},
+                "comparable_count": 0,
+                "matched_comps": [],
+                "sample_listings": [],
+                "source_breakdown": self._source_breakdown(included),
+                "source_health": [result.to_health_dict() for result in source_results],
+                "message": "I found some activity, but not enough mileage-aligned comps to price your own car confidently yet.",
+                "assumptions": self._assumptions(query, enabled_source_keys),
+            }
+
+        closest = sorted(
+            valid,
+            key=lambda listing: abs(int(listing.mileage or 0) - int(query.mileage or 0)),
+        )[:10]
+        closest_average = self.calculate_expected_resale_value(query.mileage or 0, valid)
+        clean_title_benchmark = self.calculate_market_value(included)
+        personal_value = {
+            "estimated_personal_market_value": money(closest_average),
+            "average_price_of_10_closest_mileage_comps": money(closest_average),
+            "comp_count_used": len(closest),
+            "clean_title_benchmark": money(clean_title_benchmark) if clean_title_benchmark else "",
+        }
+        response = {
+            "evaluation_engine": "personal",
+            "mode": "beta_v1",
+            "status": "complete",
+            "provider": "Multi-source vehicle comps engine",
+            "vehicle_summary": self._vehicle_summary(query),
+            "parsed_details": self._query_dict(query),
+            "personal_value": personal_value,
+            "comparable_count": len(included),
+            "matched_comps": [self._listing_public_dict(listing) for listing in closest],
+            "sample_listings": self._serialize_sample_listings(closest[:8]),
+            "source_breakdown": self._source_breakdown(included),
+            "source_health": [result.to_health_dict() for result in source_results],
+            "message": "Personal Value Beta V1 priced your car from the 10 closest-mileage comps in the current market.",
+            "upgrade_baseline_value": money(closest_average),
+            "assumptions": self._assumptions(query, enabled_source_keys),
+        }
+        if include_detailed_report:
+            response["detailed_vehicle_report"] = self.detailed_reports.get_detailed_vehicle_report(query, response, included)
+        return response
 
     def run_bulk_evaluation(self, payload: dict[str, Any]) -> dict[str, Any]:
         raw_text = str(payload.get("vehicle_input", "") or payload.get("bulk_vehicle_input", "")).strip()
@@ -262,6 +374,7 @@ class VehicleCompsEngine:
         }
         return {
             "mode": "bulk",
+            "evaluation_engine": "resell",
             "status": self._bulk_status_from_counts(summary),
             "provider": "Multi-source vehicle comps engine",
             "summary": summary,
@@ -316,10 +429,15 @@ class VehicleCompsEngine:
             query.fuel_type = str(decoded["fuel_type"])
         query.vin_decoded_used = True
 
-    def _run_sources(self, query: VehicleQuery) -> list[SourceRunResult]:
+    def _run_sources(self, query: VehicleQuery, preferred_keys: list[str] | None = None) -> list[SourceRunResult]:
         source_results: list[SourceRunResult] = []
-        enabled_adapters = [adapter for adapter in self.adapters if adapter.is_enabled()]
-        disabled_adapters = [adapter for adapter in self.adapters if not adapter.is_enabled()]
+        preferred_key_set = set(preferred_keys or [])
+        considered_adapters = [
+            adapter for adapter in self.adapters
+            if not preferred_key_set or adapter.key in preferred_key_set
+        ]
+        enabled_adapters = [adapter for adapter in considered_adapters if adapter.is_enabled()]
+        disabled_adapters = [adapter for adapter in considered_adapters if not adapter.is_enabled()]
 
         for adapter in disabled_adapters:
             metadata = adapter.get_source_metadata()
@@ -341,6 +459,23 @@ class VehicleCompsEngine:
 
         source_results.sort(key=lambda result: result.metadata.label.lower())
         return source_results
+
+    def _preferred_source_keys_for_query(self, vin_only_lookup: bool) -> list[str] | None:
+        if not vin_only_lookup:
+            return None
+        return ["autodev", "marketcheck"]
+
+    def _is_vin_only_lookup(self, payload: dict[str, Any]) -> bool:
+        vehicle_input = str(payload.get("vehicle_input", "") or "").strip().upper()
+        payload_vin = str(payload.get("vin", "") or "").strip().upper()
+        if payload_vin and self.vin_decoder.is_valid_vin(payload_vin):
+            raw_without_vin = vehicle_input.replace(payload_vin, "").strip()
+            no_structured_identity = not any(
+                str(payload.get(field, "") or "").strip()
+                for field in ("year", "make", "model", "trim", "mileage")
+            )
+            return no_structured_identity and not raw_without_vin
+        return bool(vehicle_input and self.vin_decoder.is_valid_vin(vehicle_input))
 
     def _run_single_source(self, adapter: Any, query: VehicleQuery) -> SourceRunResult:
         metadata = adapter.get_source_metadata()
@@ -547,6 +682,7 @@ class VehicleCompsEngine:
         enabled_sources: list[str],
     ) -> dict[str, Any]:
         return {
+            "evaluation_engine": "resell",
             "status": "needs_more_data",
             "provider": "Multi-source vehicle comps engine",
             "vehicle_summary": self._vehicle_summary(query),
@@ -582,6 +718,7 @@ class VehicleCompsEngine:
         enabled_sources: list[str],
     ) -> dict[str, Any]:
         return {
+            "evaluation_engine": "resell",
             "status": "needs_more_data",
             "provider": "Multi-source vehicle comps engine",
             "vehicle_summary": self._vehicle_summary(query),
@@ -650,6 +787,7 @@ class VehicleCompsEngine:
             expected_resale_high=expected_resale_value,
         )
         response = {
+            "evaluation_engine": "resell",
             "status": "complete",
             "provider": "Multi-source vehicle comps engine",
             "vehicle_summary": self._vehicle_summary(query),
@@ -709,6 +847,100 @@ class VehicleCompsEngine:
         if self._is_rebuilt_title(query):
             response = self._apply_rebuilt_title_adjustment(response)
         return response
+
+    def get_potential_upgrade_candidates(
+        self,
+        *,
+        baseline_value: float,
+        body_style: str = "",
+        focus: str = "",
+    ) -> dict[str, Any]:
+        min_price = max(1000, int(baseline_value // 500) * 500)
+        max_price = min_price + 5000
+        candidates: list[NormalizedListing] = []
+        marketcheck_adapter = next((adapter for adapter in self.adapters if adapter.key == "marketcheck" and adapter.is_enabled()), None)
+        if marketcheck_adapter is not None:
+            try:
+                payload = self.http_client.get_json(
+                    "https://api.marketcheck.com/v2/search/car/active",
+                    params={
+                        "api_key": self.config.marketcheck_api_key,
+                        "rows": 60,
+                        "car_type": "used",
+                        "price_range": f"{min_price}-{max_price}",
+                    },
+                    source_key="marketcheck",
+                )
+                listings = payload.get("listings") or payload.get("data") or []
+                dummy_query = VehicleQuery()
+                for raw in listings:
+                    if not isinstance(raw, dict):
+                        continue
+                    normalized = marketcheck_adapter.normalize_listing(raw, dummy_query)
+                    if normalized:
+                        candidates.append(normalized)
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.warning("Potential upgrades MarketCheck fetch failed: %s", exc)
+
+        deduped = self._dedupe_listings(candidates)
+        filtered = [
+            listing for listing in deduped
+            if self._listing_market_price(listing) is not None
+            and min_price <= (self._listing_market_price(listing) or 0) <= max_price
+        ]
+        ranked = self._rank_upgrade_candidates(filtered)
+        available_body_styles = sorted({listing.body_style for listing in ranked if listing.body_style})
+        available_focuses = ["sporty", "luxury", "spacious", "transporting space"]
+
+        if body_style:
+            ranked = [listing for listing in ranked if listing.body_style and listing.body_style.lower() == body_style.lower()]
+        if focus:
+            ranked = [listing for listing in ranked if focus.lower() in self._upgrade_focus_tags(listing)]
+
+        return {
+            "baseline_value": money(baseline_value),
+            "price_range": {"low": money(min_price), "high": money(max_price)},
+            "filters": {
+                "body_styles": available_body_styles,
+                "focuses": available_focuses,
+                "selected_body_style": body_style,
+                "selected_focus": focus,
+            },
+            "items": [self._upgrade_candidate_dict(listing) for listing in ranked[:24]],
+        }
+
+    def _rank_upgrade_candidates(self, listings: list[NormalizedListing]) -> list[NormalizedListing]:
+        return sorted(
+            listings,
+            key=lambda listing: (
+                -len(self._upgrade_focus_tags(listing)),
+                (self._listing_market_price(listing) or 0.0),
+                -(listing.listing_age_days or 0),
+            ),
+        )
+
+    def _upgrade_focus_tags(self, listing: NormalizedListing) -> set[str]:
+        tags: set[str] = set()
+        text = " ".join(
+            str(value or "").lower()
+            for value in [listing.make, listing.model, listing.trim, listing.body_style]
+        )
+        body_style = str(listing.body_style or "").lower()
+        if body_style in {"coupe", "convertible", "hatchback"} or any(token in text for token in ["sport", "gt", "si", "type r", "st", "rs", "m ", "amg", "s-line"]):
+            tags.add("sporty")
+        if any(token in text for token in ["audi", "bmw", "mercedes", "lexus", "acura", "infiniti", "cadillac", "genesis", "lincoln"]):
+            tags.add("luxury")
+        if body_style in {"suv", "wagon", "van"}:
+            tags.add("spacious")
+        if body_style in {"suv", "truck", "wagon", "van", "hatchback"}:
+            tags.add("transporting space")
+        return tags
+
+    def _upgrade_candidate_dict(self, listing: NormalizedListing) -> dict[str, Any]:
+        return {
+            **self._listing_public_dict(listing),
+            "focus_tags": sorted(self._upgrade_focus_tags(listing)),
+        }
 
     def _evaluate_single_vehicle_job(
         self,
@@ -959,6 +1191,7 @@ class VehicleCompsEngine:
             "adjusted_price": money(listing.adjusted_price or listing.price or 0.0),
             "seller_type": listing.seller_type,
             "location": listing.location,
+            "location_label": self._listing_location_text(listing),
             "vin": listing.vin,
             "title_status": listing.title_status,
             "condition": listing.condition,
@@ -969,6 +1202,20 @@ class VehicleCompsEngine:
             "relevance_score": round(listing.relevance_score, 2),
             "adjustment_notes": listing.adjustment_notes,
         }
+
+    def _listing_location_text(self, listing: NormalizedListing) -> str:
+        location = listing.location or {}
+        parts = [
+            str(location.get("city") or "").strip(),
+            str(location.get("state") or "").strip(),
+            str(location.get("zip") or "").strip(),
+        ]
+        location_text = ", ".join(part for part in parts[:2] if part)
+        if not location_text:
+            location_text = " ".join(part for part in parts if part)
+        if location_text:
+            return location_text
+        return str(listing.dealer_name or "").strip()
 
     def _excluded_listing(self, listing: NormalizedListing, reason: str) -> dict[str, Any]:
         return {

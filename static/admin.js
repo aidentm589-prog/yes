@@ -129,7 +129,7 @@ function renderHealthTable(items) {
           <th>Status</th>
           <th>Enabled</th>
           <th>Message</th>
-          <th>Comps</th>
+          <th>Raw / Normalized</th>
         </tr>
       </thead>
       <tbody>
@@ -139,7 +139,7 @@ function renderHealthTable(items) {
             <td><span class="${escapeHtml(badgeClass(item.status))}">${escapeHtml(item.status || "unknown")}</span></td>
             <td>${escapeHtml(item.enabled ? "Yes" : "No")}</td>
             <td>${escapeHtml(item.message || "")}</td>
-            <td>${escapeHtml(item.count ? String(item.count) : "0")}</td>
+            <td>${escapeHtml(`${Number(item.raw_count || 0)} / ${Number(item.normalized_count || item.count || 0)}`)}</td>
           </tr>
         `).join("")}
       </tbody>
