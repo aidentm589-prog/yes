@@ -3200,23 +3200,97 @@ textarea:focus {
   .topbar {
     width: 100%;
     top: 0;
-    grid-template-columns: 1fr;
-    gap: 0.75rem;
-    padding: 0.75rem;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.6rem;
+    padding: 0.7rem 0.7rem 0.75rem;
   }
 
   .topbar-left,
   .topbar-right {
     justify-content: space-between;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+  }
+
+  .topbar-left {
+    width: 100%;
+    gap: 0.5rem;
+  }
+
+  .topbar-right {
+    display: none;
   }
 
   .topbar-center {
-    order: 3;
+    order: 2;
+    width: 100%;
   }
 
   .topbar-tier-status {
     width: 100%;
+    min-height: 58px;
+    padding: 0.62rem 0.9rem;
+    border-radius: 18px;
+  }
+
+  .topbar-tier-kicker {
+    font-size: 0.64rem;
+    letter-spacing: 0.08em;
+  }
+
+  .topbar-tier-status strong {
+    font-size: clamp(1.45rem, 6vw, 2.15rem);
+  }
+
+  .topbar-tier-default,
+  .topbar-tier-hover {
+    font-size: 0.78rem;
+  }
+
+  .topbar-credit-chip {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 52px;
+    min-height: 52px;
+    padding: 0.6rem 0.72rem;
+    border-radius: 18px;
+  }
+
+  .topbar-credit-chip .composer-credit-icon {
+    width: 30px;
+    height: 30px;
+    font-size: 0.95rem;
+  }
+
+  .topbar-credit-chip .composer-credit-copy span {
+    font-size: 0.65rem;
+  }
+
+  .topbar-credit-chip .composer-credit-copy strong {
+    font-size: 1rem;
+  }
+
+  .topbar-credit-action,
+  .site-menu-button {
+    height: 52px;
+    min-height: 52px;
+  }
+
+  .topbar-credit-action {
+    flex: 0 0 auto;
+    padding: 0.6rem 0.82rem;
+    border-radius: 18px;
+    font-size: 0.86rem;
+  }
+
+  .site-menu-button {
+    width: 52px;
+    border-radius: 16px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.2);
+  }
+
+  .shell {
+    width: min(1120px, calc(100% - 1rem));
+    padding-top: 10.8rem;
   }
 
   .choice-grid,

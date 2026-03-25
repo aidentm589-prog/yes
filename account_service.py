@@ -85,8 +85,11 @@ class AccountService:
         self.repository = repository
         self.test_admin_email = os.getenv("TEST_ADMIN_EMAIL", "aiden").strip().lower()
         self.test_admin_password = os.getenv("TEST_ADMIN_PASSWORD", "Aiden123").strip()
+        self.secondary_admin_email = os.getenv("SECONDARY_ADMIN_EMAIL", "mr.o'brien").strip().lower()
+        self.secondary_admin_password = os.getenv("SECONDARY_ADMIN_PASSWORD", "123").strip()
         self.ensure_subscription_tiers()
         self.ensure_test_admin()
+        self.ensure_secondary_admin()
 
     def normalize_email(self, email: str) -> str:
         return str(email or "").strip().lower()
@@ -552,6 +555,36 @@ class AccountService:
             has_bulk_access=True,
             is_unlimited=True,
             status="active",
+        )
+
+    def ensure_secondary_admin(self) -> None:
+        existing = self.repository.get_user_by_email(self.secondary_admin_email)
+        password_hash = generate_password_hash(self.secondary_admin_password)
+        if not existing:
+            self.repository.create_user_account(
+                first_name="Mr. O'Brien",
+                email=self.secondary_admin_email,
+                password_hash=password_hash,
+                role="test_admin",
+                tier=4,
+                credit_balance=0,
+                has_bulk_access=True,
+                is_unlimited=True,
+                status="active",
+                last_free_credit_at=None,
+                last_login_at=None,
+            )
+            return
+        self.repository.update_user_account(
+            existing["id"],
+            password_hash=password_hash,
+            role="test_admin",
+            tier=4,
+            credit_balance=0,
+            has_bulk_access=True,
+            is_unlimited=True,
+            status="active",
+            first_name="Mr. O'Brien",
         )
 
     def ensure_subscription_tiers(self) -> None:
