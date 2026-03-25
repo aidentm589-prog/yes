@@ -203,6 +203,12 @@ def admin_overview_page():
     return render_template("admin_overview.html", test_admin=service.test_admin_credentials())
 
 
+@app.get("/admin/workbench")
+@admin_required
+def admin_workbench_page():
+    return render_template("admin_workbench.html")
+
+
 @app.get("/admin/clients")
 @admin_required
 def admin_clients_page():

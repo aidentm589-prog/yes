@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Workbench | Car Flip Analyzer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body class="admin-workbench-body">
+    <button id="site-menu-button" class="site-menu-button admin-workbench-menu-button" type="button" aria-expanded="false" aria-controls="site-menu-panel" aria-label="Open menu">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+    <nav id="site-menu-panel" class="site-menu-panel hidden-panel admin-workbench-menu" aria-label="Admin workbench menu">
+      <a class="site-menu-link" href="{{ url_for('index') }}">Evaluation Service</a>
+      <a class="site-menu-link" href="{{ url_for('admin_workbench_page') }}">Admin Workbench</a>
+      <a class="site-menu-link" href="{{ url_for('admin_overview_page') }}">Engine Overview</a>
+      <a class="site-menu-link" href="{{ url_for('admin_clients_page') }}">Client Dashboard</a>
+      <a class="site-menu-link" href="{{ url_for('carvana_payout') }}">Carvana Payout</a>
+      <a class="site-menu-link" href="{{ url_for('logout') }}">Log Out</a>
+    </nav>
+
+    <main class="shell admin-workbench-shell">
+      <section class="panel admin-workbench-hero">
+        <p class="deal-kicker">Admin</p>
+        <h1>Operator Workbench</h1>
+        <p class="full-evaluation-copy">
+          Direct access to Indiv V1 and Batch V1 with the add-ons, no client-facing subscription clutter.
+        </p>
+      </section>
+
+      <section class="panel admin-workbench-panel">
+        <form id="admin-workbench-form" class="admin-workbench-form">
+          <div class="admin-workbench-grid">
+            <label class="full-evaluation-label">
+              <span>Model</span>
+              <div class="choice-grid admin-workbench-choice-grid">
+                <button class="choice-card is-selected" type="button" data-workbench-mode="individual">
+                  <span class="choice-eyebrow">Fast Single</span>
+                  <strong>Indiv V1</strong>
+                  <small>One car through the full evaluation engine.</small>
+                </button>
+                <button class="choice-card" type="button" data-workbench-mode="bulk">
+                  <span class="choice-eyebrow">Queue Runner</span>
+                  <strong>Batch V1</strong>
+                  <small>Paste a queue and rank the results fast.</small>
+                </button>
+              </div>
+              <input id="admin-workbench-mode" type="hidden" name="evaluation_mode" value="individual" />
+            </label>
+
+            <label class="full-evaluation-label full">
+              <span id="admin-workbench-input-label">Vehicle Input</span>
+              <textarea id="admin-workbench-vehicle-input" name="vehicle_input" rows="4" placeholder="Describe the car or paste a link…"></textarea>
+            </label>
+
+            <label id="admin-workbench-mileage-field" class="full-evaluation-label">
+              <span>Mileage</span>
+              <input id="admin-workbench-mileage" name="mileage" type="number" min="0" step="1" inputmode="numeric" placeholder="Mileage" />
+            </label>
+
+            <label id="admin-workbench-price-field" class="full-evaluation-label">
+              <span>Listing Price</span>
+              <input id="admin-workbench-asking-price" name="asking_price" type="number" min="0" step="100" placeholder="Optional" />
+            </label>
+          </div>
+
+          <div class="admin-workbench-addons">
+            <label class="admin-addon-pill">
+              <input id="admin-addon-detailed" type="checkbox" name="detailed_vehicle_report" value="on" />
+              <span>Detailed Vehicle Report</span>
+            </label>
+            <label class="admin-addon-pill">
+              <input id="admin-addon-force" type="checkbox" name="force_refresh" value="true" checked />
+              <span>Force Fresh Pull</span>
+            </label>
+          </div>
+
+          <div class="admin-workbench-actions">
+            <button type="submit" class="button">Run Model</button>
+            <span id="admin-workbench-run-status" class="muted"></span>
+          </div>
+        </form>
+      </section>
+
+      <section id="admin-workbench-loading" class="panel hidden-panel admin-workbench-loading" aria-live="polite">
+        <div class="loading-orbital">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+        <h2 id="admin-workbench-loading-title">Running evaluation</h2>
+        <p id="admin-workbench-loading-copy">Pulling comps and calculating results...</p>
+      </section>
+
+      <section id="admin-workbench-summary-panel" class="panel hidden-panel">
+        <div class="results-head">
+          <strong>Run Summary</strong>
+        </div>
+        <div id="admin-workbench-summary" class="range-list muted"></div>
+      </section>
+
+      <section id="admin-workbench-bulk-panel" class="panel hidden-panel">
+        <div class="results-head">
+          <strong>Batch V1 Results</strong>
+        </div>
+        <div id="admin-workbench-bulk-grid" class="bulk-results-grid muted"></div>
+      </section>
+
+      <section id="admin-workbench-individual-panel" class="panel hidden-panel">
+        <div class="results-head">
+          <strong>Indiv V1 Output</strong>
+        </div>
+        <div id="admin-workbench-individual-grid" class="admin-workbench-output-grid muted"></div>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='nav.js') }}"></script>
+    <script src="{{ url_for('static', filename='admin_workbench.js') }}"></script>
+  </body>
+</html>

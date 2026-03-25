@@ -75,6 +75,44 @@ const loadingPhases = [
   "Analyzing numbers and shaping the deal",
 ];
 
+const STAT_HELP = {
+  year: "The model year the engine parsed or normalized from your input, link, VIN, or listing data.",
+  make: "The manufacturer matched from your input and normalization pipeline.",
+  model: "The model name matched from your input, VIN data, and comp normalization.",
+  trim: "The trim or package level used to keep comparable listings aligned as closely as possible.",
+  mileage: "The mileage used as the main distance anchor for closest-mileage pricing and comp matching.",
+  asking_price: "The listing price you entered or the scraper recovered from the listing. If none was found, it stays N/A.",
+  title_status: "The title condition detected from input or scraped text, such as clean or rebuilt.",
+  zip_code: "Location detail used when available to tighten market relevance.",
+  state: "State-level location detail used when available to improve regional matching.",
+  color: "Exterior color or normalized vehicle color detail when it could be identified.",
+  market_value: "The average adjusted price across all valid comparable listings used in the evaluation.",
+  safe_buy_value: "A conservative buy target built from the highest-mileage valid comps, then reduced for safer flip margin.",
+  expected_resale_value: "The average adjusted price of the comps closest in mileage to the target vehicle.",
+  estimated_profit: "Expected resale value minus safe buy value, used as the base profit spread.",
+  imperfect_title_value: "A projected value using imperfect-title math so you can compare clean-title versus damaged-title outcomes.",
+  condition_range: "The overall low-to-high pricing span built from the condition sweep and valid market comps.",
+  average_price_near_this_mileage: "The average adjusted price from the nearest mileage comps, using only comps within the nearby mileage window.",
+  listing_price_vs_avg_near_mileage: "Average price near this mileage minus the listing price, so you can see whether the asking price sits above or below nearby-mileage comps.",
+  clean_title_benchmark: "The clean-title anchor value before any title-damage reduction is applied.",
+  clean_title_range: "The expected clean-title value band before rebuilt or reconstructed title adjustments.",
+  rebuilt_title_range: "The projected value band after applying title-damage reductions to the clean-title value.",
+  average_rebuilt_value: "The midpoint rebuilt-title estimate derived from the clean-title benchmark and damage-factor logic.",
+  value_difference: "The gap between clean-title pricing and rebuilt-title pricing.",
+  average_difference: "The midpoint loss in value caused by the imperfect title adjustment.",
+  rebuilt_safe_buy_window: "A more aggressive buy window for rebuilt-title flips, designed to preserve margin.",
+  damage_factor: "The percentage reduction applied when projecting imperfect-title value from clean-title value.",
+  provided_price: "The listing price you entered or the scraper pulled from the source listing.",
+  suggested_target_price: "A target price benchmark built from the same valuation model and current comp picture.",
+  market_position: "Where the asking price sits versus market value, including dollar and percentage difference.",
+  estimated_profit_at_asking: "Expected resale minus the current asking price instead of minus the safe buy value.",
+  negotiation_window: "A practical range between today’s ask and the model’s target number to guide negotiation.",
+  takeaway: "A short interpretation of how the asking price compares with the market and deal math.",
+  average_listing_price: "The average listing price inside the currently selected mileage band.",
+  comparable_listings_used: "The number of comps used for that mileage-band calculation.",
+  selected_mileage_range: "The currently selected mileage band used for the mileage-average breakout.",
+};
+
 const vehicleFields = [
   ["year", "Year"],
   ["make", "Make"],
@@ -95,6 +133,38 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function normalizeStatHelpKey(label = "") {
+  return String(label)
+    .trim()
+    .toLowerCase()
+    .replace(/[%/+()-]/g, " ")
+    .replace(/[^\w\s]/g, "")
+    .replace(/\s+/g, "_");
+}
+
+function statHelpText(label = "", explicitKey = "") {
+  const keys = [explicitKey, label]
+    .map((value) => normalizeStatHelpKey(value))
+    .filter(Boolean);
+  for (const key of keys) {
+    if (STAT_HELP[key]) {
+      return STAT_HELP[key];
+    }
+  }
+  return "This stat comes from the current evaluation model using normalized vehicle data and the valid comparable listings gathered for this run.";
+}
+
+function renderLabelWithHelp(label, explicitKey = "") {
+  const helpText = statHelpText(label, explicitKey);
+  return `
+    <span class="stat-label-wrap">
+      <span>${escapeHtml(label)}</span>
+      <button class="stat-help-button" type="button" aria-label="Explain ${escapeHtml(label)}" data-help="${escapeHtml(helpText)}">?</button>
+      <span class="stat-help-tooltip">${escapeHtml(helpText)}</span>
+    </span>
+  `;
 }
 
 function renderAccountStatus(status) {
@@ -441,7 +511,7 @@ function renderVehicleBrief(details, fallback) {
 
       return `
         <div class="vehicle-row">
-          <span>${escapeHtml(label)}</span>
+          ${renderLabelWithHelp(label, key)}
           <strong>${escapeHtml(value)}</strong>
         </div>
       `;
@@ -554,7 +624,7 @@ function renderOverallRange(data) {
 
       return `
         <div class="range-row">
-          <span>${escapeHtml(humanizeKey(key))}</span>
+          ${renderLabelWithHelp(humanizeKey(key), key)}
           <strong class="${escapeHtml(strongClass)}">${escapeHtml(formattedValue)}</strong>
         </div>
       `;
@@ -575,7 +645,7 @@ function renderAveragePriceNearMileage(data) {
     "beforeend",
     `
       <div class="range-row">
-        <span>${escapeHtml(data.label || "Average Price Near This Mileage")}</span>
+        ${renderLabelWithHelp(data.label || "Average Price Near This Mileage", "average_price_near_this_mileage")}
         <strong>${escapeHtml(summary)}</strong>
       </div>
     `,
@@ -600,7 +670,7 @@ function renderMileagePriceDelta(averageNearMileage, parsedDetails = {}) {
     "beforeend",
     `
       <div class="range-row">
-        <span>Listing Price vs Avg Near Mileage</span>
+        ${renderLabelWithHelp("Listing Price vs Avg Near Mileage", "listing_price_vs_avg_near_mileage")}
         <strong class="${escapeHtml(deltaClass)}">${escapeHtml(formatMoney(delta))}</strong>
       </div>
     `,
@@ -623,35 +693,35 @@ function renderTitleImpact(data) {
   resultsTitleImpactPanel.classList.remove("hidden-panel");
   titleImpact.innerHTML = `
     <div class="range-row">
-      <span>Clean Title Benchmark</span>
+      ${renderLabelWithHelp("Clean Title Benchmark")}
       <strong>${escapeHtml(data.clean_title_value || "")}</strong>
     </div>
     <div class="range-row">
-      <span>Clean Title Range</span>
+      ${renderLabelWithHelp("Clean Title Range")}
       <strong>${escapeHtml(`${data.clean_title_range?.low || ""} to ${data.clean_title_range?.high || ""}`)}</strong>
     </div>
     <div class="range-row">
-      <span>Rebuilt Title Range</span>
+      ${renderLabelWithHelp("Rebuilt Title Range")}
       <strong>${escapeHtml(`${data.rebuilt_title_range?.low || ""} to ${data.rebuilt_title_range?.high || ""}`)}</strong>
     </div>
     <div class="range-row">
-      <span>Average Rebuilt Value</span>
+      ${renderLabelWithHelp("Average Rebuilt Value")}
       <strong>${escapeHtml(data.rebuilt_title_average || "")}</strong>
     </div>
     <div class="range-row">
-      <span>Value Difference</span>
+      ${renderLabelWithHelp("Value Difference")}
       <strong>${escapeHtml(`${data.value_difference?.low || ""} to ${data.value_difference?.high || ""}`)}</strong>
     </div>
     <div class="range-row">
-      <span>Average Difference</span>
+      ${renderLabelWithHelp("Average Difference")}
       <strong>${escapeHtml(data.value_difference?.average || "")}</strong>
     </div>
     <div class="range-row">
-      <span>Rebuilt Safe Buy Window</span>
+      ${renderLabelWithHelp("Rebuilt Safe Buy Window")}
       <strong>${escapeHtml(`${data.safe_buy_range?.low || ""} to ${data.safe_buy_range?.high || ""}`)}</strong>
     </div>
     <div class="range-row">
-      <span>Damage Factor</span>
+      ${renderLabelWithHelp("Damage Factor")}
       <strong>${escapeHtml(data.damage_factor_range || "")}</strong>
     </div>
   `;
@@ -673,27 +743,27 @@ function renderListingPriceAnalysis(data) {
   resultsPricingPanel.classList.remove("hidden-panel");
   listingPriceAnalysis.innerHTML = `
     <div class="range-row">
-      <span>Provided Price</span>
+      ${renderLabelWithHelp("Provided Price")}
       <strong>${escapeHtml(data.provided_price || "")}</strong>
     </div>
     <div class="range-row">
-      <span>Suggested Target Price</span>
+      ${renderLabelWithHelp("Suggested Target Price")}
       <strong>${escapeHtml(data.recommended_target_price || "")}</strong>
     </div>
     <div class="range-row">
-      <span>Market Value</span>
+      ${renderLabelWithHelp("Market Value")}
       <strong>${escapeHtml(data.market_value || "")}</strong>
     </div>
     <div class="range-row">
-      <span>Safe Buy Value</span>
+      ${renderLabelWithHelp("Safe Buy Value")}
       <strong>${escapeHtml(data.safe_buy_price || "")}</strong>
     </div>
     <div class="range-row">
-      <span>Expected Resale Value</span>
+      ${renderLabelWithHelp("Expected Resale Value")}
       <strong>${escapeHtml(data.expected_resale || "")}</strong>
     </div>
     <div class="range-row">
-      <span>Market Position</span>
+      ${renderLabelWithHelp("Market Position")}
       <strong>${escapeHtml(
         [data.position_label || "", data.difference_to_market ? `${data.difference_to_market} • ${data.difference_percent}` : ""]
           .filter(Boolean)
@@ -701,15 +771,15 @@ function renderListingPriceAnalysis(data) {
       )}</strong>
     </div>
     <div class="range-row">
-      <span>Estimated Profit At Asking</span>
+      ${renderLabelWithHelp("Estimated Profit At Asking")}
       <strong>${escapeHtml(data.estimated_profit_at_asking || "")}</strong>
     </div>
     <div class="range-row">
-      <span>Negotiation Window</span>
+      ${renderLabelWithHelp("Negotiation Window")}
       <strong>${escapeHtml(data.negotiation_window || "")}</strong>
     </div>
     <div class="range-row">
-      <span>Takeaway</span>
+      ${renderLabelWithHelp("Takeaway")}
       <strong>${escapeHtml(data.note || "")}</strong>
     </div>
   `;
@@ -730,7 +800,7 @@ function renderConditionValues(values) {
         .map(
           ([key, value]) => `
             <div class="value-line">
-              <span>${escapeHtml(humanizeKey(key))}</span>
+              ${renderLabelWithHelp(humanizeKey(key), key)}
               <strong>${escapeHtml(value)}</strong>
             </div>
           `
@@ -786,15 +856,15 @@ function renderSelectedMileageBand(index) {
 
   mileageBandOutput.innerHTML = `
     <div class="mileage-band-summary">
-      <span>Average Listing Price</span>
+      ${renderLabelWithHelp("Average Listing Price")}
       <strong>${escapeHtml(band.average_price || "")}</strong>
     </div>
     <div class="mileage-band-summary">
-      <span>Comparable Listings Used</span>
+      ${renderLabelWithHelp("Comparable Listings Used")}
       <strong>${escapeHtml(`${band.count} comp${band.count === 1 ? "" : "s"}`)}</strong>
     </div>
     <div class="mileage-band-summary">
-      <span>Selected Mileage Range</span>
+      ${renderLabelWithHelp("Selected Mileage Range")}
       <strong>${escapeHtml(band.label || "")}</strong>
     </div>
   `;
@@ -850,7 +920,7 @@ function renderDetailedReport(report) {
         <div class="detailed-report-items">
           ${(section.items || []).map((item) => `
             <div class="range-row">
-              <span>${escapeHtml(item.label || "")}</span>
+              ${renderLabelWithHelp(item.label || "")}
               <strong>${escapeHtml(item.value || "")}</strong>
             </div>
           `).join("")}
@@ -1662,6 +1732,18 @@ if (mileageBandSelect) {
     renderSelectedMileageBand(Number(event.target.value || 0));
   });
 }
+
+document.addEventListener("click", (event) => {
+  const clickedButton = event.target.closest(".stat-help-button");
+  document.querySelectorAll(".stat-help-button.is-open").forEach((button) => {
+    if (button !== clickedButton) {
+      button.classList.remove("is-open");
+    }
+  });
+  if (clickedButton) {
+    clickedButton.classList.toggle("is-open");
+  }
+});
 
 if (compSortSelect) {
   compSortSelect.addEventListener("change", (event) => {
