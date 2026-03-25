@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from itsdangerous import BadData, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from comp_engine.bulk_parser import parse_bulk_vehicle_text
@@ -97,6 +98,10 @@ class AccountService:
 
     def normalize_email(self, email: str) -> str:
         return str(email or "").strip().lower()
+
+    def _magic_login_serializer(self) -> URLSafeTimedSerializer:
+        secret = os.getenv("FLASK_SECRET_KEY", "car-flip-analyzer-dev-secret")
+        return URLSafeTimedSerializer(secret_key=secret, salt="magic-login")
 
     def create_user_account(self, first_name: str, email: str, password: str) -> dict[str, Any]:
         first_name = str(first_name or "").strip()
@@ -315,8 +320,15 @@ class AccountService:
             raise ValueError("Unable to provision the magic-link account.")
 
         self.repository.revoke_active_magic_login_tokens_for_user(user["id"], label="mr-obrien-weekly")
-        raw_token = secrets.token_urlsafe(32)
         expires_at = (_utc_now() + timedelta(days=MAGIC_LINK_TTL_DAYS)).isoformat()
+        raw_token = self._magic_login_serializer().dumps(
+            {
+                "user_id": int(user["id"]),
+                "email": user["email"],
+                "label": "mr-obrien-weekly",
+                "nonce": secrets.token_urlsafe(8),
+            }
+        )
         token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
         self.repository.create_magic_login_token(
             user_id=user["id"],
@@ -336,24 +348,38 @@ class AccountService:
 
     def login_with_magic_token(self, raw_token: str) -> dict[str, Any]:
         token = self.repository.get_magic_login_token(raw_token)
-        if not token:
-            raise ValueError("This access link is invalid.")
-        if token.get("revoked_at"):
-            raise ValueError("This access link has been revoked.")
-        try:
-            expires_at = datetime.fromisoformat(str(token["expires_at"]))
-        except ValueError as exc:
-            raise ValueError("This access link is no longer valid.") from exc
-        if expires_at <= _utc_now():
-            raise ValueError("This access link has expired.")
+        if token:
+            if token.get("revoked_at"):
+                raise ValueError("This access link has been revoked.")
+            try:
+                expires_at = datetime.fromisoformat(str(token["expires_at"]))
+            except ValueError as exc:
+                raise ValueError("This access link is no longer valid.") from exc
+            if expires_at <= _utc_now():
+                raise ValueError("This access link has expired.")
 
-        user = self.get_user_by_id(int(token["user_id"]))
+            user = self.get_user_by_id(int(token["user_id"]))
+            if not user:
+                raise ValueError("The linked account could not be found.")
+            if str(user.get("status") or "").lower() != "active":
+                raise ValueError("This account is not active.")
+
+            self.repository.touch_magic_login_token(int(token["id"]))
+            self.repository.update_user_account(user["id"], last_login_at=_utc_now_iso())
+            return self.get_user_by_id(user["id"]) or user
+
+        try:
+            payload = self._magic_login_serializer().loads(raw_token, max_age=MAGIC_LINK_TTL_DAYS * 24 * 60 * 60)
+        except SignatureExpired as exc:
+            raise ValueError("This access link has expired.") from exc
+        except BadData as exc:
+            raise ValueError("This access link is invalid.") from exc
+
+        user = self.get_user_by_id(int(payload.get("user_id") or 0))
         if not user:
             raise ValueError("The linked account could not be found.")
         if str(user.get("status") or "").lower() != "active":
             raise ValueError("This account is not active.")
-
-        self.repository.touch_magic_login_token(int(token["id"]))
         self.repository.update_user_account(user["id"], last_login_at=_utc_now_iso())
         return self.get_user_by_id(user["id"]) or user
 
