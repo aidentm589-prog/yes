@@ -311,14 +311,14 @@ class VehicleCompsEngine:
             key=lambda listing: abs(int(listing.mileage or 0) - int(query.mileage or 0)),
         )[:10]
         closest_average = self.calculate_expected_resale_value(query.mileage or 0, valid)
-        clean_title_benchmark = self.calculate_market_value(included)
+        all_comps_average = self.calculate_market_value(included)
         craigslist_average = self._craigslist_average(included)
         personal_value = {
-            "estimated_personal_market_value": money(closest_average),
+            "estimated_personal_market_value": money(all_comps_average) if all_comps_average else "",
             "average_price_of_10_closest_mileage_comps": money(closest_average),
-            "comp_count_used": len(closest),
+            "comp_count_used": len(included),
             "craigslist_average": craigslist_average,
-            "clean_title_benchmark": money(clean_title_benchmark) if clean_title_benchmark else "",
+            "clean_title_benchmark": money(all_comps_average) if all_comps_average else "",
             "full_price_range": self._build_full_price_range(included),
         }
         response = {
@@ -334,8 +334,8 @@ class VehicleCompsEngine:
             "sample_listings": self._serialize_sample_listings(closest[:10]),
             "source_breakdown": self._source_breakdown(included),
             "source_health": [result.to_health_dict() for result in source_results],
-            "message": "Personal Value Beta V1 priced your car from the 10 closest-mileage comps in the current market.",
-            "upgrade_baseline_value": money(closest_average),
+            "message": "Personal Value Beta V1 priced your car from all valid comps found in the current market, with closest-mileage comps shown separately below.",
+            "upgrade_baseline_value": money(all_comps_average) if all_comps_average else money(closest_average),
             "assumptions": self._assumptions(query, enabled_source_keys),
         }
         if include_detailed_report:
@@ -975,6 +975,8 @@ class VehicleCompsEngine:
         max_price = min_price + 10000
         context = self._sanitize_upgrade_context(vehicle_context or {})
         class_specs = self._upgrade_class_specs()
+        inferred_focus = focus or self._preferred_upgrade_focus(context)
+        preferred_classes = self._preferred_upgrade_classes(context)
         grouped_candidates: dict[str, list[NormalizedListing]] = {}
 
         for class_key, class_spec in class_specs.items():
@@ -985,10 +987,10 @@ class VehicleCompsEngine:
                 class_key=class_key,
                 body_variants=class_spec["body_variants"],
             )
-            if focus:
+            if inferred_focus:
                 candidates = [
                     listing for listing in candidates
-                    if focus.lower() in self._upgrade_focus_tags(listing)
+                    if inferred_focus.lower() in self._upgrade_focus_tags(listing)
                 ]
             grouped_candidates[class_key] = self._rank_upgrade_candidates(
                 candidates,
@@ -997,7 +999,7 @@ class VehicleCompsEngine:
                 class_key=class_key,
             )[:10]
 
-        visible_class_keys = [body_style.lower()] if body_style and body_style.lower() in class_specs else list(class_specs.keys())
+        visible_class_keys = [body_style.lower()] if body_style and body_style.lower() in class_specs else preferred_classes
         classes = []
         for class_key in visible_class_keys:
             ranked = grouped_candidates.get(class_key, [])
@@ -1019,7 +1021,7 @@ class VehicleCompsEngine:
                 "body_styles": available_body_styles,
                 "focuses": available_focuses,
                 "selected_body_style": body_style.lower() if body_style else "",
-                "selected_focus": focus,
+                "selected_focus": inferred_focus,
             },
             "classes": classes,
         }
@@ -1042,6 +1044,44 @@ class VehicleCompsEngine:
             "state": str(vehicle_context.get("state") or "").strip().upper(),
             "zip_code": str(vehicle_context.get("zip_code") or "").strip(),
         }
+
+    def _preferred_upgrade_focus(self, vehicle_context: dict[str, Any]) -> str:
+        current_text = " ".join(
+            [
+                str(vehicle_context.get("make") or ""),
+                str(vehicle_context.get("model") or ""),
+                str(vehicle_context.get("trim") or ""),
+                str(vehicle_context.get("body_style") or ""),
+            ]
+        ).lower()
+        if any(token in current_text for token in ["m340", "m240", "m3", "m4", "m5", "rs", "amg", "s-line", "type r", "gti", "wrx", "sti", "ss"]):
+            return "sporty"
+        if any(token in current_text for token in ["audi", "bmw", "mercedes", "lexus", "acura", "genesis", "infiniti", "cadillac", "lincoln", "porsche"]):
+            return "luxury"
+        body = str(vehicle_context.get("body_style") or "").lower()
+        if body in {"suv", "crossover", "wagon", "van"} or any(token in current_text for token in ["kicks", "rogue", "cr-v", "rav4", "cx-5", "explorer", "pilot", "highlander"]):
+            return "spacious"
+        if body in {"truck", "pickup"}:
+            return "transporting space"
+        return ""
+
+    def _preferred_upgrade_classes(self, vehicle_context: dict[str, Any]) -> list[str]:
+        current_text = " ".join(
+            [
+                str(vehicle_context.get("make") or ""),
+                str(vehicle_context.get("model") or ""),
+                str(vehicle_context.get("trim") or ""),
+                str(vehicle_context.get("body_style") or ""),
+            ]
+        ).lower()
+        body = str(vehicle_context.get("body_style") or "").lower()
+        if any(token in current_text for token in ["m340", "m240", "m3", "m4", "m5", "rs", "amg", "gti", "wrx", "sti", "type r", "ss"]):
+            return ["sedan", "coupe"]
+        if body in {"truck", "pickup"}:
+            return ["truck", "suv"]
+        if body in {"suv", "crossover", "wagon", "van"} or any(token in current_text for token in ["kicks", "rogue", "cr-v", "rav4", "cx-5", "explorer", "pilot", "highlander"]):
+            return ["suv"]
+        return ["sedan", "coupe", "suv"]
 
     def _fetch_marketcheck_upgrade_candidates(
         self,
@@ -1280,14 +1320,20 @@ class VehicleCompsEngine:
         score = 52.0
         if current_is_sporty and "sporty" in listing_focuses:
             score += 20
+        if current_is_sporty and "sporty" not in listing_focuses:
+            score -= 18
         if current_is_luxury and "luxury" in listing_focuses:
             score += 18
+        if current_is_luxury and "luxury" not in listing_focuses:
+            score -= 10
         if current_is_sporty and self._upgrade_performance_score(listing) >= 78:
             score += 12
         if current_is_luxury and self._upgrade_luxury_score(listing) >= 78:
             score += 10
         if not current_is_sporty and not current_is_luxury and class_key == "suv" and "spacious" in listing_focuses:
             score += 14
+        if not current_is_sporty and not current_is_luxury and class_key != "suv" and "spacious" in listing_focuses:
+            score -= 8
         if not current_is_sporty and class_key == "truck" and "transporting space" in listing_focuses:
             score += 12
         current_body = str(vehicle_context.get("body_style") or "").lower()
@@ -1299,6 +1345,10 @@ class VehicleCompsEngine:
         score += min(8, price_position * 10)
         sticker_text = " ".join([str(listing.make or ""), str(listing.model or ""), str(listing.trim or ""), str(listing.engine or "")]).lower()
         if any(token in sticker_text for token in ["rs", "amg", "m5", "m3", "m4", "c63", "ct4-v", "ct5-v", "s4", "s5", "s6", "s7", "s8", "sq5", "macan", "x3 m40", "x5", "trackhawk", "trx", "raptor", "hellcat"]):
+            score += 14
+        if current_is_sporty and any(token in sticker_text for token in ["rs3", "rs5", "c63", "m5", "m3", "m4", "ct4-v", "ct5-v", "s4", "s5", "s7", "x3 m40", "macan", "giulia quadrifoglio"]):
+            score += 18
+        if not current_is_sporty and not current_is_luxury and any(token in sticker_text for token in ["explorer", "pilot", "highlander", "telluride", "palisade", "grand cherokee", "q7", "x5", "mdx"]):
             score += 14
         return min(score, 100.0)
 
@@ -2208,9 +2258,7 @@ class VehicleCompsEngine:
                 "miles": f"{listing.mileage:,} mi" if listing.mileage is not None else "",
                 "trim": listing.trim,
                 "dealer": listing.source_label,
-                "location_label": ", ".join(
-                    part for part in [listing.location_city, listing.location_state] if part
-                ) or listing.location_zip,
+                "location_label": self._listing_location_text(listing),
                 "source_url": listing.url,
                 "url": listing.url,
                 "image_urls": listing.image_urls,
