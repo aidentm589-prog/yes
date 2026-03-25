@@ -97,6 +97,86 @@ class SQLiteRepository:
             )
             connection.commit()
 
+    def get_vehicle_input_suggestions(self, search_text: str, limit: int = 8) -> list[dict[str, Any]]:
+        normalized = " ".join(str(search_text or "").strip().lower().split())
+        if len(normalized) < 3:
+            return []
+        terms = [term for term in normalized.split() if term]
+        if not terms:
+            return []
+
+        clauses = []
+        params: list[Any] = []
+        combined_expr = (
+            "lower(trim("
+            "coalesce(json_extract(payload, '$.year'), '') || ' ' || "
+            "coalesce(json_extract(payload, '$.make'), '') || ' ' || "
+            "coalesce(json_extract(payload, '$.model'), '') || ' ' || "
+            "coalesce(json_extract(payload, '$.trim'), '') || ' ' || "
+            "coalesce(json_extract(payload, '$.drivetrain'), '')"
+            "))"
+        )
+        for term in terms:
+            clauses.append(f"{combined_expr} like ?")
+            params.append(f"%{term}%")
+        params.append(max(1, min(int(limit), 12)))
+
+        query = f"""
+            select
+                json_extract(payload, '$.year') as year,
+                json_extract(payload, '$.make') as make,
+                json_extract(payload, '$.model') as model,
+                json_extract(payload, '$.trim') as trim,
+                json_extract(payload, '$.drivetrain') as drivetrain,
+                count(*) as hit_count
+            from normalized_listings
+            where json_extract(payload, '$.make') is not null
+              and json_extract(payload, '$.model') is not null
+              and {' and '.join(clauses)}
+            group by 1,2,3,4,5
+            order by
+              case when {combined_expr} like ? then 0 else 1 end,
+              hit_count desc,
+              year desc
+            limit ?
+        """
+        params.insert(-1, f"{normalized}%")
+
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+
+        items: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for row in rows:
+            year = str(row["year"] or "").strip()
+            make = str(row["make"] or "").strip()
+            model = str(row["model"] or "").strip()
+            trim = str(row["trim"] or "").strip()
+            drivetrain = str(row["drivetrain"] or "").strip()
+            display_label = " ".join(part for part in [year, make, model] if part).strip()
+            option_detail = " ".join(part for part in [trim, drivetrain] if part).strip()
+            fill_value = " ".join(part for part in [year, make, model, trim, drivetrain] if part).strip()
+            if not display_label:
+                continue
+            dedupe = f"{display_label.lower()}|{option_detail.lower()}"
+            if dedupe in seen:
+                continue
+            seen.add(dedupe)
+            items.append(
+                {
+                    "year": year,
+                    "make": make,
+                    "model": model,
+                    "trim": trim,
+                    "drivetrain": drivetrain,
+                    "label": display_label,
+                    "detail": option_detail,
+                    "fill_value": fill_value or display_label,
+                    "hit_count": int(row["hit_count"] or 0),
+                }
+            )
+        return items
+
     def store_source_run(
         self,
         query_hash: str,

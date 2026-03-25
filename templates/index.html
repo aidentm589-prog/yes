@@ -16,8 +16,65 @@
     {% include "_top_bar.html" %}
     <main class="shell">
       <section class="composer panel">
-        <h1>Car Flip Analyzer</h1>
         <form id="lookup-form" class="composer-form">
+          <section class="choice-shell composer-engine-shell composer-engine-shell-centered">
+            <div class="choice-shell-head">
+              <span class="input-label-text">Evaluation Engine</span>
+            </div>
+            <div class="choice-grid engine-choice-grid" id="evaluation-engine-cards">
+              <button class="choice-card engine-choice-card" type="button" data-choice-group="evaluation-engine" data-value="resell">
+                <span class="engine-choice-check" aria-hidden="true"></span>
+                <div class="engine-choice-head">
+                  <span class="engine-choice-visual engine-choice-visual-buyable" aria-hidden="true">
+                    <svg viewBox="0 0 120 120" role="presentation">
+                      <defs>
+                        <linearGradient id="buyBolt" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stop-color="#fff4a5"></stop>
+                          <stop offset="45%" stop-color="#ffd85a"></stop>
+                          <stop offset="100%" stop-color="#77cfff"></stop>
+                        </linearGradient>
+                      </defs>
+                      <path d="M62 10 34 58h18l-10 52 44-62H66l16-38Z" fill="url(#buyBolt)"></path>
+                      <path d="M20 88c24-19 49-29 76-32" fill="none" stroke="rgba(132,208,255,.68)" stroke-width="5" stroke-linecap="round"></path>
+                    </svg>
+                  </span>
+                  <strong>Flip Value</strong>
+                </div>
+                <small class="engine-choice-points">
+                  <span>Find undervalued listings fast</span>
+                  <span>Estimate safe buy and resale spread</span>
+                  <span>Works with Zippy, Individual, and Bulk paths</span>
+                </small>
+                <span class="engine-choice-cta">Select Engine</span>
+              </button>
+              <button class="choice-card engine-choice-card" type="button" data-choice-group="evaluation-engine" data-value="personal">
+                <span class="engine-choice-check" aria-hidden="true"></span>
+                <div class="engine-choice-head">
+                  <span class="engine-choice-visual engine-choice-visual-personal" aria-hidden="true">
+                    <svg viewBox="0 0 160 120" role="presentation">
+                      <circle cx="42" cy="34" r="13" fill="none" stroke="rgba(163,223,255,.98)" stroke-width="5"></circle>
+                      <path d="M34 56h45l16-18h25c8 0 14 6 14 14v18c0 7-5 12-12 12H24c-6 0-11-5-11-11V63c0-4 3-7 7-7h14Z" fill="none" stroke="rgba(116,196,255,.95)" stroke-width="5" stroke-linejoin="round"></path>
+                      <path d="M56 82a11 11 0 1 0 0 .2Zm60 0a11 11 0 1 0 0 .2Z" fill="none" stroke="rgba(116,196,255,.88)" stroke-width="5"></path>
+                      <path d="M71 55h31" stroke="rgba(181,232,255,.95)" stroke-width="5" stroke-linecap="round"></path>
+                    </svg>
+                  </span>
+                  <strong>Market Value</strong>
+                </div>
+                <small class="engine-choice-points">
+                  <span>Estimate what your car should realistically sell for</span>
+                  <span>Uses closest-mileage comps for value framing</span>
+                  <span>Built for ownership, value, and upgrade decisions</span>
+                </small>
+                <span class="engine-choice-cta">Select Engine</span>
+              </button>
+            </div>
+            <select id="evaluation-engine" name="evaluation_engine" class="visually-hidden" required>
+              <option value="" selected>Select an engine</option>
+              <option value="resell">Resell Evaluation Engine</option>
+              <option value="personal">Personal Value Evaluation Engine</option>
+            </select>
+          </section>
+          <div id="evaluation-config-shell" class="hidden-panel">
           <label class="full">
             <span id="vehicle-input-label" class="input-label-text visually-hidden">Describe the car</span>
             <textarea
@@ -25,8 +82,10 @@
               name="vehicle_input"
               rows="3"
               placeholder="Describe the car or paste a link…"
+              autocomplete="off"
             ></textarea>
           </label>
+          <div id="vehicle-suggestion-box" class="vehicle-suggestion-box hidden-panel" aria-live="polite"></div>
           <p id="vehicle-input-helper" class="form-helper hidden-panel">
             Paste multiple vehicle listings at once. The app will split them into cars, evaluate each one, and rank the best opportunities first.
           </p>
@@ -55,8 +114,9 @@
             />
           </label>
           <label id="listing-price-field" class="full listing-price-field">
-            <span class="input-label-text">Listing Price</span>
+            <span id="listing-price-label" class="input-label-text">Listing Price</span>
             <input
+              id="listing-price-input"
               name="asking_price"
               type="number"
               min="0"
@@ -64,36 +124,13 @@
               placeholder="Listing Price (Optional)"
             />
           </label>
-          <section class="choice-shell">
-            <div class="choice-shell-head">
-              <span class="input-label-text">Evaluation Engine</span>
-              <small>Choose the kind of answer you want before picking a model.</small>
-            </div>
-            <div class="choice-grid engine-choice-grid" id="evaluation-engine-cards">
-              <button class="choice-card engine-choice-card" type="button" data-choice-group="evaluation-engine" data-value="resell">
-                <span class="choice-eyebrow">Deal Finder</span>
-                <strong>Resell Evaluation Engine</strong>
-                <small>Built to find steals, read deal spread, and work flip-focused pricing.</small>
-              </button>
-              <button class="choice-card engine-choice-card" type="button" data-choice-group="evaluation-engine" data-value="personal">
-                <span class="choice-eyebrow">Owner Focus</span>
-                <strong>Personal Value Evaluation Engine</strong>
-                <small>Built to answer what your own car should realistically be worth and sold for.</small>
-              </button>
-            </div>
-            <select id="evaluation-engine" name="evaluation_engine" class="visually-hidden" required>
-              <option value="" selected>Select an engine</option>
-              <option value="resell">Resell Evaluation Engine</option>
-              <option value="personal">Personal Value Evaluation Engine</option>
-            </select>
-          </section>
           <section class="choice-shell hidden-panel" id="resell-model-shell">
             <div class="choice-shell-head">
               <span class="input-label-text">Evaluation Mode</span>
               <small>Start fast with Zippy, then unlock deeper models as your tier climbs.</small>
             </div>
             <div class="choice-grid model-choice-grid" id="evaluation-mode-cards">
-              <button class="choice-card model-choice-card is-selected" type="button" data-choice-group="evaluation-mode" data-value="zippy">
+              <button class="choice-card model-choice-card" type="button" data-choice-group="evaluation-mode" data-value="zippy">
                 <span class="choice-eyebrow">Default Access</span>
                 <strong>Zippy Model</strong>
                 <small>Quick scrape, quick averages, and instant buy targets without the heavy analysis drag.</small>
@@ -127,7 +164,8 @@
               </button>
             </div>
             <select id="evaluation-mode" name="evaluation_mode" class="visually-hidden">
-              <option value="zippy" selected>Zippy Model</option>
+              <option value="" selected>Select a model</option>
+              <option value="zippy">Zippy Model</option>
               <option value="individual">Individual Evaluation Model</option>
               <option value="bulk">Bulk Evaluation Model</option>
             </select>
@@ -162,14 +200,15 @@
               <small>Seller-facing value built from the closest mileage comps in the current market.</small>
             </div>
             <div class="choice-grid engine-choice-grid">
-              <button class="choice-card engine-choice-card is-selected" type="button" data-choice-group="personal-model" data-value="beta_v1">
+              <button class="choice-card engine-choice-card" type="button" data-choice-group="personal-model" data-value="beta_v1">
                 <span class="choice-eyebrow">Beta</span>
                 <strong>Beta V1</strong>
                 <small>Values what your car should realistically sell for instead of hunting for underpriced buys.</small>
               </button>
             </div>
-            <select id="personal-evaluation-mode" class="visually-hidden">
-              <option value="beta_v1" selected>Beta V1</option>
+            <select id="personal-evaluation-mode" class="visually-hidden" name="personal_evaluation_mode">
+              <option value="" selected>Select a model</option>
+              <option value="beta_v1">Beta V1</option>
             </select>
           </section>
           <section class="choice-shell addon-shell hidden-panel" id="personal-addon-shell">
@@ -184,16 +223,21 @@
                 <small>Expanded vehicle context, specs, reliability, and ownership details for your car.</small>
                 <span class="addon-state">Optional Add-On</span>
               </button>
-              <article class="addon-card addon-link-card" id="personal-upgrades-teaser-card">
-                <span class="choice-eyebrow">Add-On Perk</span>
+              <button class="addon-card" id="personal-upgrades-card" type="button" data-choice-group="personal-upgrades" data-value="on">
+                <span class="choice-eyebrow">Upgrade Scout</span>
                 <strong>Potential Upgrades</strong>
                 <small>After valuation, browse stronger upgrade options within about $5,000 above your car’s current value.</small>
-                <span class="addon-state">Unlocked after result</span>
-              </article>
+                <span class="addon-state">Optional Add-On</span>
+              </button>
             </div>
+            <select id="personal-potential-upgrades" name="personal_potential_upgrades" class="visually-hidden">
+              <option value="off" selected>Off</option>
+              <option value="on">On</option>
+            </select>
           </section>
           <div class="actions">
             <button type="submit" class="button">Estimate Value</button>
+          </div>
           </div>
         </form>
       </section>
@@ -233,6 +277,7 @@
           <div class="results-head">
             <strong>Range</strong>
           </div>
+          <div id="personal-value-cards" class="personal-value-cards hidden-panel"></div>
           <div id="overall-range" class="range-list muted">No values yet.</div>
           <aside id="mileage-price-bands" class="panel mileage-price-panel muted">
             <div class="results-head mileage-price-head">

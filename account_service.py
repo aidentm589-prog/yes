@@ -83,8 +83,8 @@ def _utc_now_iso() -> str:
 class AccountService:
     def __init__(self, repository: SQLiteRepository) -> None:
         self.repository = repository
-        self.test_admin_email = os.getenv("TEST_ADMIN_EMAIL", "admin@carflip.local").strip().lower()
-        self.test_admin_password = os.getenv("TEST_ADMIN_PASSWORD", "admin12345").strip()
+        self.test_admin_email = os.getenv("TEST_ADMIN_EMAIL", "aiden").strip().lower()
+        self.test_admin_password = os.getenv("TEST_ADMIN_PASSWORD", "Aiden123").strip()
         self.ensure_subscription_tiers()
         self.ensure_test_admin()
 
@@ -530,7 +530,7 @@ class AccountService:
         password_hash = generate_password_hash(self.test_admin_password)
         if not existing:
             self.repository.create_user_account(
-                first_name="Admin",
+                first_name="Aiden",
                 email=self.test_admin_email,
                 password_hash=password_hash,
                 role="test_admin",

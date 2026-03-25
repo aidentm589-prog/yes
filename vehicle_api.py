@@ -201,12 +201,25 @@ class VehicleValueService:
         except Exception as exc:  # noqa: BLE001
             raise VehicleApiError(str(exc)) from exc
 
-    def get_potential_upgrade_candidates(self, baseline_value: float, body_style: str = "", focus: str = "") -> dict[str, Any]:
+    def get_potential_upgrade_candidates(
+        self,
+        baseline_value: float,
+        body_style: str = "",
+        focus: str = "",
+        vehicle_context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         try:
             return self.engine.get_potential_upgrade_candidates(
                 baseline_value=baseline_value,
                 body_style=body_style,
                 focus=focus,
+                vehicle_context=vehicle_context,
             )
+        except Exception as exc:  # noqa: BLE001
+            raise VehicleApiError(str(exc)) from exc
+
+    def get_vehicle_input_suggestions(self, search_text: str, limit: int = 8) -> list[dict[str, Any]]:
+        try:
+            return self.engine.repository.get_vehicle_input_suggestions(search_text, limit=limit)
         except Exception as exc:  # noqa: BLE001
             raise VehicleApiError(str(exc)) from exc

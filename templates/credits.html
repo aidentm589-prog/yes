@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Buy Credits | Car Flip Analyzer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    {% include "_top_bar.html" %}
+    <main class="shell shell-narrow">
+      <section class="composer panel subscriptions-hero credits-hero">
+        <p class="deal-kicker">Credit Packages</p>
+        <h1>Keep The Analyzer Moving</h1>
+        <p class="full-evaluation-copy">
+          Top up with a clean package instead of watching the meter. These are visual purchase packages for now, ready for real checkout wiring later.
+        </p>
+      </section>
+
+      <section class="subscriptions-grid credits-grid">
+        {% for package in credit_packages %}
+          <article class="subscription-card credit-package-card">
+            <p class="subscription-tier">Credit Package</p>
+            <h2>{{ package.name }}</h2>
+            <div class="subscription-price">
+              <strong>{{ package.price }}</strong>
+              <span>one-time</span>
+            </div>
+            <p class="subscription-copy">{{ package.copy }}</p>
+            <div class="subscription-stats">
+              <div>
+                <span>Credits</span>
+                <strong>{{ package.credits }}</strong>
+              </div>
+              <div>
+                <span>Best Fit</span>
+                <strong>{{ package.highlight }}</strong>
+              </div>
+            </div>
+            {% if auth_user %}
+              <button type="button" class="button compact-button" disabled>Checkout Coming Soon</button>
+            {% else %}
+              <a class="button compact-button" href="{{ url_for('signup') }}">Create Account</a>
+            {% endif %}
+          </article>
+        {% endfor %}
+      </section>
+    </main>
+    <script src="{{ url_for('static', filename='nav.js') }}"></script>
+    <script src="{{ url_for('static', filename='software_chat.js') }}"></script>
+  </body>
+</html>

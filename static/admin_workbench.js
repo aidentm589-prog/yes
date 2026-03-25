@@ -7,6 +7,11 @@ const workbenchMileageInput = document.getElementById("admin-workbench-mileage")
 const workbenchPriceField = document.getElementById("admin-workbench-price-field");
 const workbenchVinField = document.getElementById("admin-workbench-vin-field");
 const workbenchVinInput = document.getElementById("admin-workbench-vin");
+const workbenchPanel = document.getElementById("admin-workbench-panel");
+const workbenchModeTitle = document.getElementById("admin-workbench-mode-title");
+const workbenchConfigShell = document.getElementById("admin-workbench-config-shell");
+const workbenchAddons = document.getElementById("admin-workbench-addons");
+const workbenchActions = document.getElementById("admin-workbench-actions");
 const workbenchDetailedAddon = document.getElementById("admin-addon-detailed");
 const workbenchForceRefresh = document.getElementById("admin-addon-force");
 const workbenchRunStatus = document.getElementById("admin-workbench-run-status");
@@ -66,6 +71,31 @@ function postJson(url, payload) {
 function setWorkbenchMode(mode) {
   workbenchModeInput.value = mode;
   modeCards.forEach((card) => card.classList.toggle("is-selected", card.dataset.workbenchMode === mode));
+  const hasMode = Boolean(mode);
+  if (workbenchPanel) {
+    workbenchPanel.hidden = !hasMode;
+  }
+  if (workbenchConfigShell) {
+    workbenchConfigShell.hidden = !hasMode;
+  }
+  if (workbenchAddons) {
+    workbenchAddons.hidden = !hasMode;
+  }
+  if (workbenchActions) {
+    workbenchActions.hidden = !hasMode;
+  }
+  if (workbenchModeTitle) {
+    workbenchModeTitle.textContent = mode === "bulk"
+      ? "Batch V1"
+      : mode === "zippy"
+        ? "Zippy"
+        : mode === "individual"
+          ? "Indiv V1"
+          : "Choose a model";
+  }
+  if (!hasMode) {
+    return;
+  }
   const bulkMode = mode === "bulk";
   const zippyMode = mode === "zippy";
   workbenchInputLabel.textContent = bulkMode ? "Batch Input" : "Vehicle Input";
@@ -189,8 +219,14 @@ modeCards.forEach((card) => {
   });
 });
 
+setWorkbenchMode("");
+
 workbenchForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (!workbenchModeInput.value) {
+    workbenchRunStatus.textContent = "Choose a model first.";
+    return;
+  }
   const bulkMode = workbenchModeInput.value === "bulk";
   const zippyMode = workbenchModeInput.value === "zippy";
   workbenchMileageInput.setCustomValidity("");
@@ -277,5 +313,3 @@ workbenchForm?.addEventListener("submit", async (event) => {
     renderSummary([["Status", "Failed"], ["Message", workbenchRunStatus.textContent]]);
   }
 });
-
-setWorkbenchMode("individual");

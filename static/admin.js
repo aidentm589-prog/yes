@@ -39,22 +39,19 @@ function tierHoverCopy(status) {
 }
 
 function renderAccountStatus(status) {
-  if (!status) {
-    return;
-  }
   if (accountStatusPill) {
     accountStatusPill.innerHTML = `
       <strong><a href="/account">My Account</a></strong>
     `;
   }
   if (topbarCreditValue) {
-    topbarCreditValue.textContent = status.is_unlimited ? "Unlimited" : `${Number(status.credit_balance || 0)}`;
+    topbarCreditValue.textContent = status?.is_unlimited ? "Unlimited" : `${Number(status?.credit_balance || 0)}`;
   }
   if (topbarTierLabel) {
-    topbarTierLabel.textContent = status.tier_label || "Guest Access";
+    topbarTierLabel.textContent = status?.tier_label || "Guest Access";
   }
   if (topbarTierDefault) {
-    topbarTierDefault.textContent = "Current subscription access";
+    topbarTierDefault.textContent = status ? "Current subscription access" : "Explore the analyzer with guest access.";
   }
   if (topbarTierHover) {
     topbarTierHover.textContent = tierHoverCopy(status);

@@ -167,6 +167,34 @@ def subscriptions():
     return render_template("subscriptions.html", subscription_tiers=subscription_tiers)
 
 
+@app.get("/credits")
+def credits():
+    credit_packages = [
+        {
+            "name": "Starter Stack",
+            "credits": 10,
+            "price": "$19",
+            "copy": "A quick refill for a handful of personal values, Zippy runs, and premium add-ons.",
+            "highlight": "Best for light scouting",
+        },
+        {
+            "name": "Momentum Pack",
+            "credits": 40,
+            "price": "$69",
+            "copy": "A stronger working balance for active evaluating, multiple add-ons, and repeat sessions.",
+            "highlight": "Most popular",
+        },
+        {
+            "name": "Dealer Flow",
+            "credits": 120,
+            "price": "$179",
+            "copy": "Built for heavier operators who want room for repeated evaluations without watching the meter.",
+            "highlight": "High-volume value",
+        },
+    ]
+    return render_template("credits.html", credit_packages=credit_packages)
+
+
 @app.get("/full-evaluation")
 @login_required
 def full_evaluation():
@@ -243,6 +271,21 @@ def valuation():
     return jsonify({"ok": True, **result, "account_status": service.get_account_status(session.get("user_id"))})
 
 
+@app.get("/api/vehicle-suggestions")
+def vehicle_suggestions():
+    query = str(request.args.get("q") or "").strip()
+    limit_raw = request.args.get("limit", "8")
+    try:
+        limit = int(limit_raw)
+    except ValueError:
+        limit = 8
+    try:
+        items = service.get_vehicle_input_suggestions(query, limit=limit)
+    except VehicleApiError as exc:
+        return jsonify({"ok": False, "message": str(exc), "items": []}), 400
+    return jsonify({"ok": True, "items": items})
+
+
 @app.post("/api/potential-upgrades")
 @login_required
 def potential_upgrades():
@@ -261,11 +304,13 @@ def potential_upgrades():
         return jsonify({"ok": False, "message": "A valid baseline value is required."}), 400
     body_style = str(payload.get("body_style") or "").strip()
     focus = str(payload.get("focus") or "").strip()
+    vehicle_context = payload.get("vehicle_context") if isinstance(payload.get("vehicle_context"), dict) else {}
     try:
         result = service.get_potential_upgrade_candidates(
             baseline_value=baseline_float,
             body_style=body_style,
             focus=focus,
+            vehicle_context=vehicle_context,
         )
     except VehicleApiError as exc:
         return jsonify({"ok": False, "message": str(exc)}), 400

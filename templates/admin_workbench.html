@@ -28,61 +28,96 @@
     </nav>
 
     <main class="shell admin-workbench-shell">
-      <section class="panel admin-workbench-hero">
+      <section id="admin-workbench-selector" class="panel admin-workbench-hero admin-workbench-selector">
         <p class="deal-kicker">Admin</p>
-        <h1>Operator Workbench</h1>
+        <h1>Select Your Model</h1>
         <p class="full-evaluation-copy">
-          Direct access to Indiv V1, Batch V1, and Zippy with the add-ons, no client-facing subscription clutter.
+          Choose the operator path first, then the workbench opens the matching input flow for that model only.
         </p>
+        <div class="choice-grid admin-workbench-choice-grid admin-workbench-choice-grid-inline">
+          <button class="choice-card admin-workbench-model-card" type="button" data-workbench-mode="individual">
+            <span class="admin-workbench-model-visual admin-workbench-model-visual-individual" aria-hidden="true">
+              <svg viewBox="0 0 140 100" role="presentation">
+                <rect x="18" y="18" width="104" height="64" rx="16" fill="none" stroke="rgba(170,229,255,.88)" stroke-width="4"></rect>
+                <path d="M40 66h60" stroke="rgba(170,229,255,.6)" stroke-width="4" stroke-linecap="round"></path>
+                <path d="M50 34h40M50 46h28" stroke="rgba(220,245,255,.96)" stroke-width="5" stroke-linecap="round"></path>
+                <circle cx="102" cy="44" r="10" fill="none" stroke="rgba(116,196,255,.95)" stroke-width="4"></circle>
+              </svg>
+            </span>
+            <span class="choice-eyebrow">Fast Single</span>
+            <strong>Indiv V1</strong>
+            <small>One car through the full evaluation engine.</small>
+          </button>
+          <button class="choice-card admin-workbench-model-card" type="button" data-workbench-mode="bulk">
+            <span class="admin-workbench-model-visual admin-workbench-model-visual-bulk" aria-hidden="true">
+              <svg viewBox="0 0 140 100" role="presentation">
+                <rect x="18" y="18" width="30" height="24" rx="8" fill="none" stroke="rgba(170,229,255,.82)" stroke-width="4"></rect>
+                <rect x="56" y="18" width="30" height="24" rx="8" fill="none" stroke="rgba(170,229,255,.82)" stroke-width="4"></rect>
+                <rect x="94" y="18" width="30" height="24" rx="8" fill="none" stroke="rgba(170,229,255,.82)" stroke-width="4"></rect>
+                <rect x="18" y="52" width="30" height="24" rx="8" fill="none" stroke="rgba(116,196,255,.75)" stroke-width="4"></rect>
+                <rect x="56" y="52" width="30" height="24" rx="8" fill="none" stroke="rgba(116,196,255,.75)" stroke-width="4"></rect>
+                <rect x="94" y="52" width="30" height="24" rx="8" fill="none" stroke="rgba(116,196,255,.75)" stroke-width="4"></rect>
+              </svg>
+            </span>
+            <span class="choice-eyebrow">Queue Runner</span>
+            <strong>Batch V1</strong>
+            <small>Paste a queue and rank the results fast.</small>
+          </button>
+          <button class="choice-card admin-workbench-model-card" type="button" data-workbench-mode="zippy">
+            <span class="admin-workbench-model-visual admin-workbench-model-visual-zippy" aria-hidden="true">
+              <svg viewBox="0 0 140 100" role="presentation">
+                <defs>
+                  <linearGradient id="zippyBolt" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#fff2a0"></stop>
+                    <stop offset="48%" stop-color="#ffd54d"></stop>
+                    <stop offset="100%" stop-color="#7bccff"></stop>
+                  </linearGradient>
+                </defs>
+                <path d="M76 12 44 56h21l-12 32 43-45H73l3-31Z" fill="url(#zippyBolt)"></path>
+                <path d="M24 78c27-13 53-18 91-19" fill="none" stroke="rgba(116,196,255,.68)" stroke-width="4" stroke-linecap="round"></path>
+              </svg>
+            </span>
+            <span class="choice-eyebrow">Fast Numbers</span>
+            <strong>Zippy</strong>
+            <small>Quick scrape, quick averages, quick buy targets.</small>
+          </button>
+        </div>
       </section>
 
-      <section class="panel admin-workbench-panel">
+      <section id="admin-workbench-panel" class="panel admin-workbench-panel" hidden>
         <form id="admin-workbench-form" class="admin-workbench-form">
           <div class="admin-workbench-grid">
-            <label class="full-evaluation-label">
-              <span>Model</span>
-              <div class="choice-grid admin-workbench-choice-grid">
-                <button class="choice-card is-selected" type="button" data-workbench-mode="individual">
-                  <span class="choice-eyebrow">Fast Single</span>
-                  <strong>Indiv V1</strong>
-                  <small>One car through the full evaluation engine.</small>
-                </button>
-                <button class="choice-card" type="button" data-workbench-mode="bulk">
-                  <span class="choice-eyebrow">Queue Runner</span>
-                  <strong>Batch V1</strong>
-                  <small>Paste a queue and rank the results fast.</small>
-                </button>
-                <button class="choice-card" type="button" data-workbench-mode="zippy">
-                  <span class="choice-eyebrow">Fast Numbers</span>
-                  <strong>Zippy</strong>
-                  <small>Quick scrape, quick averages, quick buy targets.</small>
-                </button>
-              </div>
-              <input id="admin-workbench-mode" type="hidden" name="evaluation_mode" value="individual" />
-            </label>
+            <input id="admin-workbench-mode" type="hidden" name="evaluation_mode" value="" />
 
-            <label class="full-evaluation-label full">
-              <span id="admin-workbench-input-label">Vehicle Input</span>
-              <textarea id="admin-workbench-vehicle-input" name="vehicle_input" rows="4" placeholder="Describe the car or paste a link…"></textarea>
-            </label>
+            <div class="admin-workbench-mode-banner full">
+              <span class="choice-eyebrow">Selected Model</span>
+              <strong id="admin-workbench-mode-title">Choose a model</strong>
+            </div>
 
-            <label id="admin-workbench-mileage-field" class="full-evaluation-label">
-              <span>Mileage</span>
-              <input id="admin-workbench-mileage" name="mileage" type="number" min="0" step="1" inputmode="numeric" placeholder="Mileage" />
-            </label>
+            <div id="admin-workbench-config-shell" class="full" hidden>
+              <label class="full-evaluation-label full">
+                <span id="admin-workbench-input-label">Vehicle Input</span>
+                <textarea id="admin-workbench-vehicle-input" name="vehicle_input" rows="4" placeholder="Describe the car or paste a link…"></textarea>
+              </label>
 
-            <label id="admin-workbench-vin-field" class="full-evaluation-label">
-              <span>VIN (Optional)</span>
-              <input id="admin-workbench-vin" name="vin" type="text" maxlength="17" autocapitalize="characters" placeholder="VIN (Optional)" />
-            </label>
+              <label id="admin-workbench-mileage-field" class="full-evaluation-label">
+                <span>Mileage</span>
+                <input id="admin-workbench-mileage" name="mileage" type="number" min="0" step="1" inputmode="numeric" placeholder="Mileage" />
+              </label>
 
-            <label id="admin-workbench-price-field" class="full-evaluation-label">
-              <span>Listing Price</span>
-              <input id="admin-workbench-asking-price" name="asking_price" type="number" min="0" step="100" placeholder="Optional" />
-            </label>
+              <label id="admin-workbench-vin-field" class="full-evaluation-label">
+                <span>VIN (Optional)</span>
+                <input id="admin-workbench-vin" name="vin" type="text" maxlength="17" autocapitalize="characters" placeholder="VIN (Optional)" />
+              </label>
+
+              <label id="admin-workbench-price-field" class="full-evaluation-label">
+                <span>Listing Price</span>
+                <input id="admin-workbench-asking-price" name="asking_price" type="number" min="0" step="100" placeholder="Optional" />
+              </label>
+            </div>
           </div>
 
-          <div class="admin-workbench-addons">
+          <div id="admin-workbench-addons" class="admin-workbench-addons" hidden>
             <label class="admin-addon-pill">
               <input id="admin-addon-detailed" type="checkbox" name="detailed_vehicle_report" value="on" />
               <span>Detailed Vehicle Report</span>
@@ -93,7 +128,7 @@
             </label>
           </div>
 
-          <div class="admin-workbench-actions">
+          <div id="admin-workbench-actions" class="admin-workbench-actions" hidden>
             <button type="submit" class="button">Run Model</button>
             <span id="admin-workbench-run-status" class="muted"></span>
           </div>

@@ -40,35 +40,71 @@ class MarketCheckBaseAdapter(SourceAdapter):
                 bool(self.config.marketcheck_api_key),
             )
             return []
-        params = {
+        payload = None
+        last_error: Exception | None = None
+        for params in self._query_variants(query):
+            LOGGER.info(
+                "MarketCheck request: enabled=%s key_present=%s year=%s make=%s model=%s trim=%s zip=%s state=%s radius=%s rows=%s",
+                bool(getattr(self.config, "enable_marketcheck", False)),
+                bool(self.config.marketcheck_api_key),
+                params.get("year"),
+                params.get("make"),
+                params.get("model"),
+                params.get("trim"),
+                params.get("zip"),
+                params.get("state"),
+                params.get("radius", ""),
+                params.get("rows"),
+            )
+            try:
+                payload = self.http_client.get_json(self.endpoint, params=params, source_key=self.key)
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+                message = str(exc).lower()
+                if "422" in message and "radius limit" in message:
+                    LOGGER.warning("MarketCheck rejected radius. Trying a looser query variant.")
+                    continue
+                LOGGER.warning("MarketCheck variant failed: %s", exc)
+                continue
+            listings = payload.get("listings") or payload.get("data") or []
+            normalized = [listing for listing in listings if isinstance(listing, dict)]
+            LOGGER.info("MarketCheck response: status=ok results=%s", len(normalized))
+            if normalized:
+                return normalized
+        if last_error:
+            raise last_error
+        return []
+
+    def _query_variants(self, query: VehicleQuery) -> list[dict[str, Any]]:
+        base = {
             "api_key": self.config.marketcheck_api_key,
             "year": query.year,
             "make": query.make,
             "model": query.model,
-            "trim": query.trim or None,
-            "zip": query.zip_code or None,
-            "state": query.state or None,
-            "radius": 250 if query.zip_code else 500,
             "rows": min(self.config.max_source_results, 50),
             "car_type": "used",
         }
-        LOGGER.info(
-            "MarketCheck request: enabled=%s key_present=%s year=%s make=%s model=%s trim=%s zip=%s state=%s rows=%s",
-            bool(getattr(self.config, "enable_marketcheck", False)),
-            bool(self.config.marketcheck_api_key),
-            query.year,
-            query.make,
-            query.model,
-            query.trim,
-            query.zip_code,
-            query.state,
-            params["rows"],
-        )
-        payload = self.http_client.get_json(self.endpoint, params=params, source_key=self.key)
-        listings = payload.get("listings") or payload.get("data") or []
-        normalized = [listing for listing in listings if isinstance(listing, dict)]
-        LOGGER.info("MarketCheck response: status=ok results=%s", len(normalized))
-        return normalized
+        variants: list[dict[str, Any]] = []
+
+        def with_location(params: dict[str, Any]) -> list[dict[str, Any]]:
+            options: list[dict[str, Any]] = []
+            if query.zip_code:
+                options.append({**params, "zip": query.zip_code, "radius": 75})
+            if query.state:
+                options.append({**params, "state": query.state})
+            options.append(dict(params))
+            return options
+
+        with_trim = {**base, "trim": query.trim or None}
+        without_trim = dict(base)
+
+        for candidate in with_location(with_trim):
+            variants.append({key: value for key, value in candidate.items() if value not in ("", None)})
+        for candidate in with_location(without_trim):
+            compact = {key: value for key, value in candidate.items() if value not in ("", None)}
+            if compact not in variants:
+                variants.append(compact)
+        return variants
 
     def health_check(self) -> dict[str, Any]:
         health = super().health_check()

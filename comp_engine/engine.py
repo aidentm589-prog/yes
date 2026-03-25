@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from statistics import median
@@ -854,70 +856,372 @@ class VehicleCompsEngine:
         baseline_value: float,
         body_style: str = "",
         focus: str = "",
+        vehicle_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         min_price = max(1000, int(baseline_value // 500) * 500)
         max_price = min_price + 5000
-        candidates: list[NormalizedListing] = []
-        marketcheck_adapter = next((adapter for adapter in self.adapters if adapter.key == "marketcheck" and adapter.is_enabled()), None)
-        if marketcheck_adapter is not None:
-            try:
-                payload = self.http_client.get_json(
-                    "https://api.marketcheck.com/v2/search/car/active",
-                    params={
-                        "api_key": self.config.marketcheck_api_key,
-                        "rows": 60,
-                        "car_type": "used",
-                        "price_range": f"{min_price}-{max_price}",
-                    },
-                    source_key="marketcheck",
-                )
-                listings = payload.get("listings") or payload.get("data") or []
-                dummy_query = VehicleQuery()
-                for raw in listings:
-                    if not isinstance(raw, dict):
-                        continue
-                    normalized = marketcheck_adapter.normalize_listing(raw, dummy_query)
-                    if normalized:
-                        candidates.append(normalized)
-            except Exception as exc:  # noqa: BLE001
-                LOGGER.warning("Potential upgrades MarketCheck fetch failed: %s", exc)
+        context = self._sanitize_upgrade_context(vehicle_context or {})
+        class_specs = self._upgrade_class_specs()
+        grouped_candidates: dict[str, list[NormalizedListing]] = {}
 
-        deduped = self._dedupe_listings(candidates)
-        filtered = [
-            listing for listing in deduped
-            if self._listing_market_price(listing) is not None
-            and min_price <= (self._listing_market_price(listing) or 0) <= max_price
-        ]
-        ranked = self._rank_upgrade_candidates(filtered)
-        available_body_styles = sorted({listing.body_style for listing in ranked if listing.body_style})
+        for class_key, class_spec in class_specs.items():
+            candidates = self._fetch_marketcheck_upgrade_candidates(
+                min_price=min_price,
+                max_price=max_price,
+                vehicle_context=context,
+                class_key=class_key,
+                body_variants=class_spec["body_variants"],
+            )
+            if focus:
+                candidates = [
+                    listing for listing in candidates
+                    if focus.lower() in self._upgrade_focus_tags(listing)
+                ]
+            grouped_candidates[class_key] = self._rank_upgrade_candidates(
+                candidates,
+                baseline_value=baseline_value,
+                vehicle_context=context,
+                class_key=class_key,
+            )[:10]
+
+        visible_class_keys = [body_style.lower()] if body_style and body_style.lower() in class_specs else list(class_specs.keys())
+        classes = []
+        for class_key in visible_class_keys:
+            ranked = grouped_candidates.get(class_key, [])
+            class_spec = class_specs[class_key]
+            classes.append({
+                "key": class_key,
+                "label": class_spec["label"],
+                "items": [self._upgrade_candidate_dict(listing, index + 1) for index, listing in enumerate(ranked)],
+            })
+
+        available_body_styles = list(class_specs.keys())
         available_focuses = ["sporty", "luxury", "spacious", "transporting space"]
-
-        if body_style:
-            ranked = [listing for listing in ranked if listing.body_style and listing.body_style.lower() == body_style.lower()]
-        if focus:
-            ranked = [listing for listing in ranked if focus.lower() in self._upgrade_focus_tags(listing)]
 
         return {
             "baseline_value": money(baseline_value),
             "price_range": {"low": money(min_price), "high": money(max_price)},
+            "vehicle_context": context,
             "filters": {
                 "body_styles": available_body_styles,
                 "focuses": available_focuses,
-                "selected_body_style": body_style,
+                "selected_body_style": body_style.lower() if body_style else "",
                 "selected_focus": focus,
             },
-            "items": [self._upgrade_candidate_dict(listing) for listing in ranked[:24]],
+            "classes": classes,
         }
 
-    def _rank_upgrade_candidates(self, listings: list[NormalizedListing]) -> list[NormalizedListing]:
-        return sorted(
-            listings,
-            key=lambda listing: (
-                -len(self._upgrade_focus_tags(listing)),
-                (self._listing_market_price(listing) or 0.0),
-                -(listing.listing_age_days or 0),
-            ),
+    def _upgrade_class_specs(self) -> dict[str, dict[str, Any]]:
+        return {
+            "sedan": {"label": "Sedan", "body_variants": ["sedan"]},
+            "coupe": {"label": "Coupe", "body_variants": ["coupe", "convertible", "hatchback"]},
+            "suv": {"label": "SUV", "body_variants": ["suv", "wagon", "crossover"]},
+            "truck": {"label": "Truck", "body_variants": ["truck", "pickup"]},
+        }
+
+    def _sanitize_upgrade_context(self, vehicle_context: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "year": int(vehicle_context.get("year")) if str(vehicle_context.get("year") or "").isdigit() else None,
+            "make": str(vehicle_context.get("make") or "").strip(),
+            "model": str(vehicle_context.get("model") or "").strip(),
+            "trim": str(vehicle_context.get("trim") or "").strip(),
+            "body_style": str(vehicle_context.get("body_style") or "").strip().lower(),
+            "state": str(vehicle_context.get("state") or "").strip().upper(),
+            "zip_code": str(vehicle_context.get("zip_code") or "").strip(),
+        }
+
+    def _fetch_marketcheck_upgrade_candidates(
+        self,
+        *,
+        min_price: int,
+        max_price: int,
+        vehicle_context: dict[str, Any],
+        class_key: str,
+        body_variants: list[str],
+    ) -> list[NormalizedListing]:
+        marketcheck_adapter = next((adapter for adapter in self.adapters if adapter.key == "marketcheck" and adapter.is_enabled()), None)
+        if marketcheck_adapter is None:
+            return []
+
+        variants: list[dict[str, Any]] = []
+        base = {
+            "api_key": self.config.marketcheck_api_key,
+            "rows": 90,
+            "car_type": "used",
+            "price_range": f"{min_price}-{max_price}",
+        }
+        for body_variant in body_variants:
+            params = {**base, "body_type": body_variant}
+            if vehicle_context.get("zip_code"):
+                params["zip"] = vehicle_context["zip_code"]
+                params["radius"] = 75
+            elif vehicle_context.get("state"):
+                params["state"] = vehicle_context["state"]
+            variants.append(params)
+            if "zip" in params:
+                broader = dict(params)
+                broader.pop("zip", None)
+                broader.pop("radius", None)
+                variants.append(broader)
+        variants.append(base)
+
+        normalized: list[NormalizedListing] = []
+        seen_params: set[str] = set()
+        dummy_query = VehicleQuery()
+        for params in variants:
+            signature = json.dumps(params, sort_keys=True)
+            if signature in seen_params:
+                continue
+            seen_params.add(signature)
+            try:
+                payload = self.http_client.get_json(
+                    "https://api.marketcheck.com/v2/search/car/active",
+                    params=params,
+                    source_key="marketcheck",
+                )
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.warning("Potential upgrades MarketCheck fetch failed for %s: %s", class_key, exc)
+                continue
+            listings = payload.get("listings") or payload.get("data") or []
+            for raw in listings:
+                if not isinstance(raw, dict):
+                    continue
+                item = marketcheck_adapter.normalize_listing(raw, dummy_query)
+                if item is None:
+                    continue
+                normalized.append(item)
+            if len(normalized) >= 30:
+                break
+
+        deduped = self._dedupe_listings(normalized)
+        current_make = str(vehicle_context.get("make") or "").lower()
+        current_model = str(vehicle_context.get("model") or "").lower()
+        return [
+            listing for listing in deduped
+            if self._listing_market_price(listing) is not None
+            and min_price <= (self._listing_market_price(listing) or 0) <= max_price
+            and self._classify_upgrade_body(listing) == class_key
+            and not (
+                current_make
+                and current_model
+                and str(listing.make or "").lower() == current_make
+                and str(listing.model or "").lower() == current_model
+            )
+        ]
+
+    def _rank_upgrade_candidates(
+        self,
+        listings: list[NormalizedListing],
+        *,
+        baseline_value: float,
+        vehicle_context: dict[str, Any],
+        class_key: str,
+    ) -> list[NormalizedListing]:
+        scored: list[tuple[float, NormalizedListing]] = []
+        price_cap = baseline_value + 5000
+        for listing in listings:
+            score_breakdown = self._upgrade_score_breakdown(listing, baseline_value, price_cap, vehicle_context, class_key)
+            listing.metadata["upgrade_scores"] = score_breakdown
+            listing.metadata["upgrade_focus_tags"] = sorted(self._upgrade_focus_tags(listing))
+            listing.metadata["upgrade_blurb"] = self._upgrade_blurb(listing, score_breakdown)
+            scored.append((score_breakdown["total"], listing))
+
+        ranked = [listing for _, listing in sorted(scored, key=lambda item: (-item[0], self._listing_market_price(item[1]) or 0.0))]
+        reranked = self._llm_rerank_upgrade_candidates(ranked[:14], vehicle_context, class_key)
+        return reranked + [listing for listing in ranked if listing not in reranked]
+
+    def _upgrade_score_breakdown(
+        self,
+        listing: NormalizedListing,
+        baseline_value: float,
+        price_cap: float,
+        vehicle_context: dict[str, Any],
+        class_key: str,
+    ) -> dict[str, float]:
+        market_price = self._listing_market_price(listing) or 0.0
+        price_span = max(price_cap - baseline_value, 1.0)
+        price_position = max(0.0, min(1.0, (market_price - baseline_value) / price_span))
+        value_score = max(45.0, 100.0 - (price_position * 55.0))
+        performance_score = self._upgrade_performance_score(listing)
+        luxury_score = self._upgrade_luxury_score(listing)
+        reliability_score = self._upgrade_reliability_score(listing)
+        upgrade_bonus = self._upgrade_bonus(listing, vehicle_context, class_key, price_position)
+        total = (
+            value_score * 0.27
+            + performance_score * 0.24
+            + luxury_score * 0.18
+            + reliability_score * 0.17
+            + upgrade_bonus * 0.14
         )
+        return {
+            "price": round(value_score, 1),
+            "value": round(value_score, 1),
+            "performance": round(performance_score, 1),
+            "luxury": round(luxury_score, 1),
+            "reliability": round(reliability_score, 1),
+            "upgrade_fit": round(upgrade_bonus, 1),
+            "total": round(total, 1),
+        }
+
+    def _upgrade_performance_score(self, listing: NormalizedListing) -> float:
+        text = " ".join([str(listing.make or ""), str(listing.model or ""), str(listing.trim or ""), str(listing.engine or "")]).lower()
+        score = 40.0
+        if any(token in text for token in ["turbo", "twin turbo", "v6", "v8", "hybrid max", "ecoboost"]):
+            score += 18
+        if any(token in text for token in ["rs", "amg", "m ", "m3", "m340", "stype", "s-line", "type r", "sti", "wrx", "gti", "gt", "ss", "zl1", "trx", "raptor"]):
+            score += 28
+        if self._classify_upgrade_body(listing) in {"coupe", "sedan"}:
+            score += 6
+        return min(score, 100.0)
+
+    def _upgrade_luxury_score(self, listing: NormalizedListing) -> float:
+        make = str(listing.make or "").lower()
+        text = " ".join([make, str(listing.model or ""), str(listing.trim or "")]).lower()
+        premium_makes = {"audi", "bmw", "mercedes-benz", "mercedes", "lexus", "genesis", "acura", "infiniti", "cadillac", "lincoln", "land rover", "porsche"}
+        near_premium = {"mazda", "volvo", "buick"}
+        score = 35.0
+        if make in premium_makes:
+            score += 42
+        elif make in near_premium:
+            score += 20
+        if any(token in text for token in ["platinum", "premium", "prestige", "signature", "limited", "touring", "reserve", "denali"]):
+            score += 16
+        return min(score, 100.0)
+
+    def _upgrade_reliability_score(self, listing: NormalizedListing) -> float:
+        make = str(listing.make or "").lower()
+        ratings = {
+            "toyota": 92,
+            "lexus": 92,
+            "honda": 89,
+            "acura": 86,
+            "mazda": 86,
+            "subaru": 81,
+            "hyundai": 78,
+            "kia": 78,
+            "nissan": 72,
+            "ford": 70,
+            "chevrolet": 69,
+            "gmc": 68,
+            "audi": 64,
+            "bmw": 63,
+            "mercedes-benz": 60,
+            "mercedes": 60,
+            "volkswagen": 62,
+            "porsche": 67,
+            "jeep": 56,
+            "land rover": 48,
+            "ram": 63,
+        }
+        return float(ratings.get(make, 66))
+
+    def _upgrade_bonus(
+        self,
+        listing: NormalizedListing,
+        vehicle_context: dict[str, Any],
+        class_key: str,
+        price_position: float,
+    ) -> float:
+        current_text = " ".join(
+            [
+                str(vehicle_context.get("make") or ""),
+                str(vehicle_context.get("model") or ""),
+                str(vehicle_context.get("trim") or ""),
+                str(vehicle_context.get("body_style") or ""),
+            ]
+        ).lower()
+        current_is_sporty = any(token in current_text for token in ["m", "rs", "amg", "type r", "si", "wrx", "gti", "gt"])
+        current_is_luxury = any(token in current_text for token in ["audi", "bmw", "mercedes", "lexus", "acura", "genesis", "infiniti", "cadillac"])
+        listing_focuses = self._upgrade_focus_tags(listing)
+        score = 52.0
+        if current_is_sporty and "sporty" in listing_focuses:
+            score += 20
+        if current_is_luxury and "luxury" in listing_focuses:
+            score += 18
+        if not current_is_sporty and not current_is_luxury and class_key == "suv" and "spacious" in listing_focuses:
+            score += 14
+        if not current_is_sporty and class_key == "truck" and "transporting space" in listing_focuses:
+            score += 12
+        current_body = str(vehicle_context.get("body_style") or "").lower()
+        if current_body and current_body != class_key:
+            score += 5
+        current_year = vehicle_context.get("year")
+        if isinstance(current_year, int) and listing.year and listing.year >= current_year:
+            score += min(8, (listing.year - current_year) * 2)
+        score += min(8, price_position * 10)
+        return min(score, 100.0)
+
+    def _classify_upgrade_body(self, listing: NormalizedListing) -> str:
+        body = str(listing.body_style or "").lower()
+        if any(token in body for token in ["truck", "pickup"]):
+            return "truck"
+        if any(token in body for token in ["suv", "crossover", "wagon"]):
+            return "suv"
+        if any(token in body for token in ["coupe", "convertible", "hatchback"]):
+            return "coupe"
+        return "sedan"
+
+    def _upgrade_blurb(self, listing: NormalizedListing, score_breakdown: dict[str, float]) -> str:
+        focuses = self._upgrade_focus_tags(listing)
+        if "sporty" in focuses and "luxury" in focuses:
+            return "Blends premium feel with real performance upside in this price band."
+        if "sporty" in focuses:
+            return "Leans performance-first while still staying in a realistic used-market range."
+        if "luxury" in focuses:
+            return "Feels like a clear luxury step up without jumping far outside the value band."
+        if "spacious" in focuses:
+            return "Adds room and everyday utility while still landing as an upgrade for the money."
+        if score_breakdown.get("reliability", 0) >= 80:
+            return "Scores as a safer long-term step up with strong reliability value."
+        return "Looks like a practical next-step upgrade for this budget window."
+
+    def _llm_rerank_upgrade_candidates(
+        self,
+        listings: list[NormalizedListing],
+        vehicle_context: dict[str, Any],
+        class_key: str,
+    ) -> list[NormalizedListing]:
+        api_key = os.getenv("OPENAI_API_KEY", "").strip()
+        if not api_key or not listings:
+            return []
+        model = os.getenv("OPENAI_SOFTWARE_CHAT_MODEL", "gpt-5.4-mini").strip() or "gpt-5.4-mini"
+        payload_items = []
+        for index, listing in enumerate(listings, start=1):
+            payload_items.append({
+                "id": index,
+                "vehicle": " ".join(part for part in [str(listing.year or ""), listing.make, listing.model, listing.trim] if part).strip(),
+                "price": self._listing_market_price(listing) or 0.0,
+                "body_style": listing.body_style,
+                "scores": listing.metadata.get("upgrade_scores") or {},
+                "focus_tags": sorted(self._upgrade_focus_tags(listing)),
+            })
+        prompt = (
+            "You are ranking used-car upgrade recommendations. "
+            "Return only JSON with shape {\"ordered_ids\":[...]} using the candidate ids in best-upgrade order. "
+            "Favor realistic upgrades for the current car owner using price, value, performance, luxury, and reliability. "
+            f"Current vehicle: {json.dumps(vehicle_context, ensure_ascii=True)}. "
+            f"Class: {class_key}. Candidates: {json.dumps(payload_items, ensure_ascii=True)}"
+        )
+        try:
+            status, body, _ = self.http_client.request(
+                "POST",
+                "https://api.openai.com/v1/responses",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json_body={"model": model, "input": prompt},
+                source_key="upgrade_ranking_llm",
+                timeout_seconds=20,
+            )
+            if status >= 400:
+                return []
+            response = json.loads(body.decode("utf-8"))
+            text = DetailedVehicleReportService._extract_response_text(self.detailed_reports, response)
+            data = json.loads(text[text.find("{"): text.rfind("}") + 1])
+            ordered_ids = [int(value) for value in data.get("ordered_ids") or [] if str(value).isdigit()]
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("Upgrade reranking LLM fallback triggered: %s", exc)
+            return []
+        by_id = {index: listing for index, listing in enumerate(listings, start=1)}
+        return [by_id[item_id] for item_id in ordered_ids if item_id in by_id]
 
     def _upgrade_focus_tags(self, listing: NormalizedListing) -> set[str]:
         tags: set[str] = set()
@@ -936,10 +1240,13 @@ class VehicleCompsEngine:
             tags.add("transporting space")
         return tags
 
-    def _upgrade_candidate_dict(self, listing: NormalizedListing) -> dict[str, Any]:
+    def _upgrade_candidate_dict(self, listing: NormalizedListing, rank: int) -> dict[str, Any]:
         return {
             **self._listing_public_dict(listing),
+            "rank": rank,
             "focus_tags": sorted(self._upgrade_focus_tags(listing)),
+            "upgrade_scores": listing.metadata.get("upgrade_scores") or {},
+            "upgrade_blurb": listing.metadata.get("upgrade_blurb") or "",
         }
 
     def _evaluate_single_vehicle_job(
