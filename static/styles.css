@@ -855,8 +855,18 @@ textarea,
 .composer-form {
   display: grid;
   gap: 1rem;
-  width: min(820px, 100%);
+  width: min(1480px, 100%);
   margin: 0.55rem auto 0;
+}
+
+#evaluation-config-shell {
+  width: min(820px, 100%);
+  margin: 0 auto;
+}
+
+#evaluation-config-shell:not(.hidden-panel) {
+  display: grid;
+  gap: 1rem;
 }
 
 label {
@@ -1020,6 +1030,12 @@ textarea {
   min-height: min(64vh, 680px);
   gap: 2.2rem;
   isolation: isolate;
+}
+
+#evaluation-engine-cards {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+  min-height: min(72vh, 760px);
 }
 
 .engine-choice-card {
