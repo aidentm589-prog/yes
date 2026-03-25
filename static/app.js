@@ -116,6 +116,7 @@ const STAT_HELP = {
   condition_range: "The overall low-to-high pricing span built from the condition sweep and valid market comps.",
   average_price_near_this_mileage: "The average adjusted price from the nearest mileage comps, using only comps within the nearby mileage window.",
   listing_price_vs_avg_near_mileage: "Average price near this mileage minus the listing price, so you can see whether the asking price sits above or below nearby-mileage comps.",
+  craigslist_average: "The average adjusted price of the Craigslist-only comps in this run, which tends to lean more private-party than dealer inventory.",
   kelly_blue_book_adjuster: "A mileage-ranked discount from the market-wide average. Lower-mileage placements receive a lighter cut and higher-mileage placements receive a deeper one.",
   clean_title_benchmark: "The clean-title anchor value before any title-damage reduction is applied.",
   clean_title_range: "The expected clean-title value band before rebuilt or reconstructed title adjustments.",
@@ -145,6 +146,7 @@ const HELP_ENABLED_KEYS = new Set([
   "condition_range",
   "average_price_near_this_mileage",
   "listing_price_vs_avg_near_mileage",
+  "craigslist_average",
   "kelly_blue_book_adjuster",
   "clean_title_benchmark",
   "clean_title_range",
@@ -1122,6 +1124,7 @@ function renderPersonalValueCards(personal = {}) {
     ["Estimated Personal Market Value", personal.estimated_personal_market_value || ""],
     ["10 Closest-Mileage Average", personal.average_price_of_10_closest_mileage_comps || ""],
     ["Comp Count Used", personal.comp_count_used ? String(personal.comp_count_used) : ""],
+    ["Craigslist Average", personal.craigslist_average || ""],
     ["Kelly Blue Book Adjuster", personal.kelly_blue_book_adjuster || ""],
     ["Clean Title Benchmark", personal.clean_title_benchmark || ""],
   ].filter(([, value]) => value);
@@ -1336,6 +1339,7 @@ function renderBulkResults(items = []) {
     const keyFacts = [
       ["Listed Price", item.listed_price || ""],
       ["Market Value", item.market_value || ""],
+      ["Craigslist Average", item.craigslist_average || ""],
       ["Kelly Blue Book Adjuster", item.kelly_blue_book_adjuster || ""],
       ["Safe Buy Value", item.safe_buy_value || ""],
       ["Expected Resale", item.expected_resale_value || ""],
@@ -1742,6 +1746,7 @@ function renderZippyResult(resultBody) {
   const zippyRange = {
     average_price_of_all_comps: values.average_all_comps || "",
     average_price_of_20_closest_mileage_comps: values.average_20_closest_mileage_comps || values.average_all_comps || "",
+    craigslist_average: resultBody.craigslist_average || values.craigslist_average || "",
     kelly_blue_book_adjuster: values.kelly_blue_book_adjuster || "",
     very_poor_buy_price: values.very_poor_buy_price || "",
     good_buy_price: values.good_buy_price || "",

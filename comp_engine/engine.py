@@ -190,9 +190,11 @@ class VehicleCompsEngine:
         avg_closest = self._average_price_of_closest_mileage(valid, query.mileage, 20) if query.mileage else avg_all
         anchor = avg_closest or avg_all
         kbb_adjuster = self._build_kbb_adjuster(avg_all, query.mileage, valid)
+        craigslist_average = self._craigslist_average(valid)
         zippy_values = {
             "average_all_comps": money(avg_all),
             "average_20_closest_mileage_comps": money(avg_closest) if avg_closest else "",
+            "craigslist_average": craigslist_average,
             "kelly_blue_book_adjuster": kbb_adjuster["value"],
             "very_poor_buy_price": money(anchor * 0.55) if anchor else "",
             "good_buy_price": money(anchor * 0.72) if anchor else "",
@@ -293,10 +295,12 @@ class VehicleCompsEngine:
         closest_average = self.calculate_expected_resale_value(query.mileage or 0, valid)
         clean_title_benchmark = self.calculate_market_value(included)
         kbb_adjuster = self._build_kbb_adjuster(clean_title_benchmark, query.mileage, included)
+        craigslist_average = self._craigslist_average(included)
         personal_value = {
             "estimated_personal_market_value": money(closest_average),
             "average_price_of_10_closest_mileage_comps": money(closest_average),
             "comp_count_used": len(closest),
+            "craigslist_average": craigslist_average,
             "clean_title_benchmark": money(clean_title_benchmark) if clean_title_benchmark else "",
             "kelly_blue_book_adjuster": kbb_adjuster["value"],
         }
@@ -733,6 +737,7 @@ class VehicleCompsEngine:
             "title_adjustment": self._empty_title_adjustment(query),
             "listing_price_analysis": self._empty_listing_price_analysis(query, insufficient_data=True),
             "overall_range": {},
+            "craigslist_average": self._craigslist_average(included),
             "sample_listings": self._serialize_sample_listings(included[:8]),
             "comparable_count": len(included),
             "matched_comps": [self._listing_public_dict(listing) for listing in included],
@@ -817,6 +822,7 @@ class VehicleCompsEngine:
                 query.mileage,
                 title_adjustment.get("rebuilt_title_average", ""),
             ),
+            "craigslist_average": self._craigslist_average(listings),
             "sample_listings": self._serialize_sample_listings(listings[:8]),
             "comparable_count": len(listings),
             "matched_comps": [self._listing_public_dict(listing) for listing in listings],
@@ -1316,6 +1322,7 @@ class VehicleCompsEngine:
             "vehicle_name": vehicle_name,
             "listed_price": listed_price_text,
             "market_value": overall.get("market_value", ""),
+            "craigslist_average": result.get("craigslist_average", ""),
             "kelly_blue_book_adjuster": overall.get("kelly_blue_book_adjuster", ""),
             "safe_buy_value": overall.get("safe_buy_value", ""),
             "expected_resale_value": overall.get("expected_resale_value", "") or resale_range.get("low", ""),
@@ -1707,6 +1714,16 @@ class VehicleCompsEngine:
         if not valid_mileages:
             return None
         return int(round(sum(valid_mileages) / len(valid_mileages)))
+
+    def _is_craigslist_listing(self, listing: NormalizedListing) -> bool:
+        source = f"{listing.source} {listing.source_label}".lower()
+        return "craigslist" in source
+
+    def _craigslist_average(self, listings: list[NormalizedListing]) -> str:
+        craigslist_listings = [listing for listing in listings if self._is_craigslist_listing(listing)]
+        if not craigslist_listings:
+            return ""
+        return money(self.calculate_market_value(craigslist_listings))
 
     def _build_kbb_adjuster(
         self,
