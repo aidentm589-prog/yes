@@ -84,94 +84,96 @@
         </div>
       </section>
 
-      <section id="admin-workbench-panel" class="panel admin-workbench-panel" hidden>
-        <form id="admin-workbench-form" class="admin-workbench-form">
-          <div class="admin-workbench-grid">
-            <input id="admin-workbench-mode" type="hidden" name="evaluation_mode" value="" />
+      <div id="admin-workbench-stage" hidden>
+        <section id="admin-workbench-panel" class="panel admin-workbench-panel" hidden>
+          <form id="admin-workbench-form" class="admin-workbench-form">
+            <div class="admin-workbench-grid">
+              <input id="admin-workbench-mode" type="hidden" name="evaluation_mode" value="" />
 
-            <div class="admin-workbench-mode-banner full">
-              <span class="choice-eyebrow">Selected Model</span>
-              <strong id="admin-workbench-mode-title">Choose a model</strong>
+              <div class="admin-workbench-mode-banner full">
+                <span class="choice-eyebrow">Selected Model</span>
+                <strong id="admin-workbench-mode-title">Choose a model</strong>
+              </div>
+
+              <div id="admin-workbench-config-shell" class="full" hidden>
+                <label class="full-evaluation-label full">
+                  <span id="admin-workbench-input-label">Vehicle Input</span>
+                  <textarea id="admin-workbench-vehicle-input" name="vehicle_input" rows="4" placeholder="Describe the car or paste a link…"></textarea>
+                </label>
+
+                <label id="admin-workbench-mileage-field" class="full-evaluation-label">
+                  <span>Mileage</span>
+                  <input id="admin-workbench-mileage" name="mileage" type="number" min="0" step="1" inputmode="numeric" placeholder="Mileage" />
+                </label>
+
+                <label id="admin-workbench-vin-field" class="full-evaluation-label">
+                  <span>VIN (Optional)</span>
+                  <input id="admin-workbench-vin" name="vin" type="text" maxlength="17" autocapitalize="characters" placeholder="VIN (Optional)" />
+                </label>
+
+                <label id="admin-workbench-price-field" class="full-evaluation-label">
+                  <span>Listing Price</span>
+                  <input id="admin-workbench-asking-price" name="asking_price" type="number" min="0" step="100" placeholder="Optional" />
+                </label>
+              </div>
             </div>
 
-            <div id="admin-workbench-config-shell" class="full" hidden>
-              <label class="full-evaluation-label full">
-                <span id="admin-workbench-input-label">Vehicle Input</span>
-                <textarea id="admin-workbench-vehicle-input" name="vehicle_input" rows="4" placeholder="Describe the car or paste a link…"></textarea>
+            <div id="admin-workbench-addons" class="admin-workbench-addons" hidden>
+              <label class="admin-addon-pill">
+                <input id="admin-addon-detailed" type="checkbox" name="detailed_vehicle_report" value="on" />
+                <span>Detailed Vehicle Report</span>
               </label>
-
-              <label id="admin-workbench-mileage-field" class="full-evaluation-label">
-                <span>Mileage</span>
-                <input id="admin-workbench-mileage" name="mileage" type="number" min="0" step="1" inputmode="numeric" placeholder="Mileage" />
-              </label>
-
-              <label id="admin-workbench-vin-field" class="full-evaluation-label">
-                <span>VIN (Optional)</span>
-                <input id="admin-workbench-vin" name="vin" type="text" maxlength="17" autocapitalize="characters" placeholder="VIN (Optional)" />
-              </label>
-
-              <label id="admin-workbench-price-field" class="full-evaluation-label">
-                <span>Listing Price</span>
-                <input id="admin-workbench-asking-price" name="asking_price" type="number" min="0" step="100" placeholder="Optional" />
+              <label class="admin-addon-pill">
+                <input id="admin-addon-force" type="checkbox" name="force_refresh" value="true" checked />
+                <span>Force Fresh Pull</span>
               </label>
             </div>
+
+            <div id="admin-workbench-actions" class="admin-workbench-actions" hidden>
+              <button type="submit" class="button">Run Model</button>
+              <span id="admin-workbench-run-status" class="muted"></span>
+            </div>
+          </form>
+        </section>
+
+        <section id="admin-workbench-loading" class="panel hidden-panel admin-workbench-loading" aria-live="polite">
+          <div class="loading-orbital">
+            <span></span>
+            <span></span>
+            <span></span>
           </div>
+          <h2 id="admin-workbench-loading-title">Running evaluation</h2>
+          <p id="admin-workbench-loading-copy">Pulling comps and calculating results...</p>
+        </section>
 
-          <div id="admin-workbench-addons" class="admin-workbench-addons" hidden>
-            <label class="admin-addon-pill">
-              <input id="admin-addon-detailed" type="checkbox" name="detailed_vehicle_report" value="on" />
-              <span>Detailed Vehicle Report</span>
-            </label>
-            <label class="admin-addon-pill">
-              <input id="admin-addon-force" type="checkbox" name="force_refresh" value="true" checked />
-              <span>Force Fresh Pull</span>
-            </label>
+        <section id="admin-workbench-summary-panel" class="panel hidden-panel">
+          <div class="results-head">
+            <strong>Run Summary</strong>
           </div>
+          <div id="admin-workbench-summary" class="range-list muted"></div>
+        </section>
 
-          <div id="admin-workbench-actions" class="admin-workbench-actions" hidden>
-            <button type="submit" class="button">Run Model</button>
-            <span id="admin-workbench-run-status" class="muted"></span>
+        <section id="admin-workbench-bulk-panel" class="panel hidden-panel">
+          <div class="results-head">
+            <strong>Batch V1 Results</strong>
           </div>
-        </form>
-      </section>
+          <div id="admin-workbench-bulk-grid" class="bulk-results-grid muted"></div>
+        </section>
 
-      <section id="admin-workbench-loading" class="panel hidden-panel admin-workbench-loading" aria-live="polite">
-        <div class="loading-orbital">
-          <span></span>
-          <span></span>
-          <span></span>
-        </div>
-        <h2 id="admin-workbench-loading-title">Running evaluation</h2>
-        <p id="admin-workbench-loading-copy">Pulling comps and calculating results...</p>
-      </section>
+        <section id="admin-workbench-individual-panel" class="panel hidden-panel">
+          <div class="results-head">
+            <strong>Indiv V1 Output</strong>
+          </div>
+          <div id="admin-workbench-individual-grid" class="admin-workbench-output-grid muted"></div>
+        </section>
 
-      <section id="admin-workbench-summary-panel" class="panel hidden-panel">
-        <div class="results-head">
-          <strong>Run Summary</strong>
-        </div>
-        <div id="admin-workbench-summary" class="range-list muted"></div>
-      </section>
-
-      <section id="admin-workbench-bulk-panel" class="panel hidden-panel">
-        <div class="results-head">
-          <strong>Batch V1 Results</strong>
-        </div>
-        <div id="admin-workbench-bulk-grid" class="bulk-results-grid muted"></div>
-      </section>
-
-      <section id="admin-workbench-individual-panel" class="panel hidden-panel">
-        <div class="results-head">
-          <strong>Indiv V1 Output</strong>
-        </div>
-        <div id="admin-workbench-individual-grid" class="admin-workbench-output-grid muted"></div>
-      </section>
-
-      <section id="admin-workbench-zippy-panel" class="panel hidden-panel">
-        <div class="results-head">
-          <strong>Zippy Output</strong>
-        </div>
-        <div id="admin-workbench-zippy-grid" class="admin-workbench-output-grid muted"></div>
-      </section>
+        <section id="admin-workbench-zippy-panel" class="panel hidden-panel">
+          <div class="results-head">
+            <strong>Zippy Output</strong>
+          </div>
+          <div id="admin-workbench-zippy-grid" class="admin-workbench-output-grid muted"></div>
+        </section>
+      </div>
     </main>
 
     <script src="{{ url_for('static', filename='nav.js') }}"></script>

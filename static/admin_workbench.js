@@ -1,5 +1,6 @@
 const workbenchForm = document.getElementById("admin-workbench-form");
 const workbenchModeInput = document.getElementById("admin-workbench-mode");
+const workbenchStage = document.getElementById("admin-workbench-stage");
 const workbenchVehicleInput = document.getElementById("admin-workbench-vehicle-input");
 const workbenchInputLabel = document.getElementById("admin-workbench-input-label");
 const workbenchMileageField = document.getElementById("admin-workbench-mileage-field");
@@ -27,6 +28,7 @@ const workbenchIndividualGrid = document.getElementById("admin-workbench-individ
 const workbenchZippyPanel = document.getElementById("admin-workbench-zippy-panel");
 const workbenchZippyGrid = document.getElementById("admin-workbench-zippy-grid");
 const modeCards = document.querySelectorAll("[data-workbench-mode]");
+const workbenchSelector = document.getElementById("admin-workbench-selector");
 
 function escapeHtml(value) {
   return String(value)
@@ -72,6 +74,9 @@ function setWorkbenchMode(mode) {
   workbenchModeInput.value = mode;
   modeCards.forEach((card) => card.classList.toggle("is-selected", card.dataset.workbenchMode === mode));
   const hasMode = Boolean(mode);
+  if (workbenchStage) {
+    workbenchStage.hidden = !hasMode;
+  }
   if (workbenchPanel) {
     workbenchPanel.hidden = !hasMode;
   }
@@ -109,6 +114,15 @@ function setWorkbenchMode(mode) {
   workbenchVinField.classList.toggle("hidden-panel", bulkMode);
   workbenchPriceField.classList.toggle("hidden-panel", bulkMode);
   workbenchMileageInput.required = !bulkMode;
+}
+
+function setWorkbenchResultsView(active) {
+  if (workbenchSelector) {
+    workbenchSelector.classList.toggle("hidden-panel", active);
+  }
+  if (workbenchPanel) {
+    workbenchPanel.classList.toggle("hidden-panel", active);
+  }
 }
 
 function setLoadingState(visible, title = "", copy = "") {
@@ -269,10 +283,13 @@ workbenchForm?.addEventListener("submit", async (event) => {
     const result = await postJson("/api/valuation", payload);
     setLoadingState(false);
     if (!result.ok || !result.body.ok) {
+      setWorkbenchResultsView(false);
       workbenchRunStatus.textContent = result.body.message || "Run failed.";
       renderSummary([["Status", "Failed"], ["Message", result.body.message || "Unable to complete the evaluation."]]);
       return;
     }
+
+    setWorkbenchResultsView(true);
 
     if (result.body.mode === "bulk") {
       workbenchRunStatus.textContent = `Batch complete: ${result.body.summary?.evaluated_entries || 0} evaluated`;
@@ -309,6 +326,7 @@ workbenchForm?.addEventListener("submit", async (event) => {
     renderIndividual(result.body);
   } catch (error) {
     setLoadingState(false);
+    setWorkbenchResultsView(false);
     workbenchRunStatus.textContent = error instanceof Error ? error.message : "Run failed.";
     renderSummary([["Status", "Failed"], ["Message", workbenchRunStatus.textContent]]);
   }

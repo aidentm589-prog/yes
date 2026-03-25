@@ -1063,6 +1063,7 @@ textarea {
   margin: 0 auto;
   min-height: min(64vh, 680px);
   gap: 2.2rem;
+  isolation: isolate;
 }
 
 .engine-choice-card {
@@ -1086,6 +1087,7 @@ textarea {
     inset 0 0 55px rgba(151, 218, 255, 0.035);
   backdrop-filter: blur(18px);
   overflow: hidden;
+  isolation: isolate;
   transition:
     transform 220ms ease,
     border-color 220ms ease,
@@ -1117,10 +1119,12 @@ textarea {
 .engine-choice-card:focus-visible {
   transform: translateY(-4px) scale(1.025);
   filter: brightness(1.08);
-  border-color: rgba(168, 228, 255, 0.38);
+  border-color: rgba(170, 231, 255, 0.62);
   box-shadow:
     0 30px 62px rgba(0, 0, 0, 0.28),
-    0 0 48px rgba(88, 182, 255, 0.15),
+    0 0 0 1px rgba(136, 223, 255, 0.24),
+    0 0 22px rgba(98, 200, 255, 0.18),
+    0 0 54px rgba(88, 182, 255, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     inset 0 0 40px rgba(116, 196, 255, 0.06);
 }
@@ -1143,6 +1147,10 @@ textarea {
     0 0 0 1px rgba(108, 212, 255, 0.34),
     0 0 54px rgba(70, 190, 255, 0.38),
     inset 0 0 40px rgba(116, 196, 255, 0.08);
+}
+
+.engine-choice-grid:hover .engine-choice-card:not(:hover):not(:focus-visible):not(.is-selected) {
+  filter: brightness(0.96);
 }
 
 .engine-choice-card.is-selected .engine-choice-visual {
@@ -1191,19 +1199,19 @@ textarea {
   display: grid;
   grid-template-columns: 1fr;
   justify-items: center;
-  align-items: center;
-  gap: 1.5rem;
+  align-items: start;
+  gap: 2.8rem;
   width: 100%;
-  min-height: 250px;
-  padding-top: 1.2rem;
+  min-height: 360px;
+  padding-top: 1.9rem;
   margin-bottom: 0;
-  align-content: center;
+  align-content: start;
   text-align: center;
 }
 
 .engine-choice-visual {
-  width: min(100%, 200px);
-  height: 102px;
+  width: min(100%, 180px);
+  height: 74px;
   display: grid;
   place-items: center;
   border-radius: 24px;
@@ -1218,8 +1226,8 @@ textarea {
 }
 
 .engine-choice-visual svg {
-  width: 100%;
-  height: 100%;
+  width: 74%;
+  height: 74%;
   overflow: visible;
 }
 
@@ -1235,15 +1243,16 @@ textarea {
 
 .engine-choice-card strong {
   font-family: "Cormorant Garamond", serif;
-  font-size: clamp(3.9rem, 5vw, 5.6rem);
+  font-size: clamp(5.8rem, 8vw, 8.4rem);
   width: 100%;
   text-align: center;
   margin: 0;
   color: #f7fbff;
-  align-self: center;
-  line-height: 0.88;
+  align-self: start;
+  line-height: 0.94;
   display: block;
-  padding-top: 0;
+  min-height: 7.8rem;
+  padding-top: 0.9rem;
   text-shadow:
     0 0 12px rgba(174, 226, 255, 0.08),
     0 0 22px rgba(73, 165, 255, 0.06);
@@ -1313,11 +1322,12 @@ textarea {
   }
 
   .engine-choice-head {
-    min-height: 190px;
+    min-height: 250px;
   }
 
   .engine-choice-card strong {
-    font-size: 3rem;
+    font-size: 5rem;
+    min-height: 5.2rem;
   }
 }
 
