@@ -141,6 +141,7 @@ class HttpClient:
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
         source_key: str = "",
+        timeout_seconds: int | None = None,
     ) -> dict[str, Any]:
         status, body, _ = self.request(
             "GET",
@@ -148,6 +149,7 @@ class HttpClient:
             params=params,
             headers=headers,
             source_key=source_key,
+            timeout_seconds=timeout_seconds,
         )
         if status >= 400:
             raise RuntimeError(f"GET {url} failed with {status}: {body.decode('utf-8', 'ignore')}")

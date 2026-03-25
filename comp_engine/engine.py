@@ -239,6 +239,8 @@ class VehicleCompsEngine:
         query = parse_vehicle_query(payload)
         self._apply_vin_decode(query)
         enabled_source_keys = [adapter.key for adapter in self.adapters if adapter.is_enabled()]
+        cache_key = f"{query.cache_key(enabled_source_keys)}:personal:v2"
+        use_cache = not include_detailed_report and not payload.get("force_refresh")
 
         if not query.minimum_details_present():
             return {
@@ -258,6 +260,11 @@ class VehicleCompsEngine:
                 "assumptions": self._assumptions(query, enabled_source_keys),
             }
 
+        if use_cache:
+            cached = self.repository.get_cache_json(cache_key)
+            if cached:
+                return cached
+
         source_results = self._run_sources(query, preferred_keys=self._preferred_source_keys_for_query(vin_only_lookup))
         deduped = self._dedupe_listings([
             listing
@@ -265,23 +272,23 @@ class VehicleCompsEngine:
             for listing in result.normalized_listings
         ])
         deduped = self._decode_listing_vins(query, deduped)
-        included, excluded = self._score_and_filter(query, deduped)
-        included = self._enrich_top_listings(query, included)
-        included = self._decode_listing_vins(query, included)
-        included, more_excluded = self._score_and_filter(query, included)
-        excluded.extend(more_excluded)
+        analyzed_all = self._annotate_personal_market_listings(query, deduped)
+        if not self.config.personal_fast_path:
+            analyzed_all = self._enrich_top_listings(query, analyzed_all)
+            analyzed_all = self._decode_listing_vins(query, analyzed_all)
+            analyzed_all = self._annotate_personal_market_listings(query, analyzed_all)
 
         valid = [
-            listing for listing in included
+            listing for listing in analyzed_all
             if listing.mileage is not None and self._listing_market_price(listing) is not None
         ]
         if not valid:
             fallback_priced = [
-                listing for listing in included
+                listing for listing in analyzed_all
                 if self._listing_market_price(listing) is not None
             ]
             fallback_average = self.calculate_market_value(fallback_priced)
-            return {
+            response = {
                 "evaluation_engine": "personal",
                 "mode": "beta_v1",
                 "status": "complete",
@@ -296,30 +303,33 @@ class VehicleCompsEngine:
                     "clean_title_benchmark": money(fallback_average) if fallback_average else "",
                     "full_price_range": self._build_full_price_range(fallback_priced),
                 },
-                "comparable_count": len(included),
+                "comparable_count": len(fallback_priced),
                 "matched_comps": [self._listing_public_dict(listing) for listing in fallback_priced[:10]],
                 "sample_listings": self._serialize_sample_listings(fallback_priced[:10]),
-                "source_breakdown": self._source_breakdown(included),
+                "source_breakdown": self._source_breakdown(fallback_priced),
                 "source_health": [result.to_health_dict() for result in source_results],
-                "message": "Returned the best available market comps found, even though mileage-matched comps were limited.",
+                "message": "Personal Value Beta V1 priced your car from every deduped market comp with a usable price, even though mileage-matched comps were limited.",
                 "upgrade_baseline_value": money(fallback_average) if fallback_average else "",
                 "assumptions": self._assumptions(query, enabled_source_keys),
             }
+            if use_cache:
+                self.repository.set_cache_json(cache_key, response, ttl_seconds=self.config.cache_ttl_seconds)
+            return response
 
         closest = sorted(
             valid,
             key=lambda listing: abs(int(listing.mileage or 0) - int(query.mileage or 0)),
         )[:10]
         closest_average = self.calculate_expected_resale_value(query.mileage or 0, valid)
-        all_comps_average = self.calculate_market_value(included)
-        craigslist_average = self._craigslist_average(included)
+        all_comps_average = self.calculate_market_value(analyzed_all)
+        craigslist_average = self._craigslist_average(analyzed_all)
         personal_value = {
             "estimated_personal_market_value": money(all_comps_average) if all_comps_average else "",
             "average_price_of_10_closest_mileage_comps": money(closest_average),
-            "comp_count_used": len(included),
+            "comp_count_used": len(analyzed_all),
             "craigslist_average": craigslist_average,
             "clean_title_benchmark": money(all_comps_average) if all_comps_average else "",
-            "full_price_range": self._build_full_price_range(included),
+            "full_price_range": self._build_full_price_range(analyzed_all),
         }
         response = {
             "evaluation_engine": "personal",
@@ -329,17 +339,19 @@ class VehicleCompsEngine:
             "vehicle_summary": self._vehicle_summary(query),
             "parsed_details": self._query_dict(query),
             "personal_value": personal_value,
-            "comparable_count": len(included),
+            "comparable_count": len(analyzed_all),
             "matched_comps": [self._listing_public_dict(listing) for listing in closest],
             "sample_listings": self._serialize_sample_listings(closest[:10]),
-            "source_breakdown": self._source_breakdown(included),
+            "source_breakdown": self._source_breakdown(analyzed_all),
             "source_health": [result.to_health_dict() for result in source_results],
-            "message": "Personal Value Beta V1 priced your car from all valid comps found in the current market, with closest-mileage comps shown separately below.",
+            "message": "Personal Value Beta V1 priced your car from every deduped market comp with a usable price, with closest-mileage comps shown separately below.",
             "upgrade_baseline_value": money(all_comps_average) if all_comps_average else money(closest_average),
             "assumptions": self._assumptions(query, enabled_source_keys),
         }
         if include_detailed_report:
-            response["detailed_vehicle_report"] = self.detailed_reports.get_detailed_vehicle_report(query, response, included)
+            response["detailed_vehicle_report"] = self.detailed_reports.get_detailed_vehicle_report(query, response, analyzed_all)
+        if use_cache:
+            self.repository.set_cache_json(cache_key, response, ttl_seconds=self.config.cache_ttl_seconds)
         return response
 
     def run_bulk_evaluation(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -764,6 +776,31 @@ class VehicleCompsEngine:
 
         scored.sort(key=lambda listing: (listing.adjusted_price or listing.price or 0.0))
         return scored, excluded
+
+    def _annotate_personal_market_listings(
+        self,
+        query: VehicleQuery,
+        listings: list[NormalizedListing],
+    ) -> list[NormalizedListing]:
+        priced: list[NormalizedListing] = []
+        for listing in listings:
+            if listing.price is None or listing.price < 500:
+                continue
+            score, tier, reasons = score_listing(query, listing)
+            listing.relevance_score = score
+            listing.match_tier = tier
+            listing.metadata["match_reasons"] = reasons
+            priced.append(listing)
+
+        if not priced:
+            return []
+
+        mileage_rate = infer_mileage_adjustment_rate(priced)
+        for listing in priced:
+            listing.adjusted_price, listing.adjustment_notes = apply_adjustments(query, listing, mileage_rate)
+
+        priced.sort(key=lambda listing: (listing.adjusted_price or listing.price or 0.0))
+        return priced
 
     def _build_needs_more_data_response(
         self,

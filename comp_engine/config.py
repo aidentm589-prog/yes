@@ -46,6 +46,7 @@ class EngineConfig:
     max_source_results: int
     max_detail_enrichment: int
     max_vin_decodes: int
+    personal_fast_path: bool
     sqlite_path: Path
     enable_craigslist: bool
     enable_autodev: bool
@@ -79,12 +80,13 @@ class EngineConfig:
         marketcheck_enabled = _env_flag("COMP_ENABLE_MARKETCHECK", False) and bool(marketcheck_api_key)
         return cls(
             cache_ttl_seconds=_env_int("COMP_CACHE_TTL_SECONDS", 1800),
-            http_timeout_seconds=_env_int("COMP_HTTP_TIMEOUT_SECONDS", 20),
-            http_retry_count=_env_int("COMP_HTTP_RETRY_COUNT", 2),
+            http_timeout_seconds=_env_int("COMP_HTTP_TIMEOUT_SECONDS", 8),
+            http_retry_count=_env_int("COMP_HTTP_RETRY_COUNT", 1),
             max_source_workers=_env_int("COMP_MAX_SOURCE_WORKERS", 6),
             max_source_results=_env_int("COMP_MAX_SOURCE_RESULTS", 80),
-            max_detail_enrichment=_env_int("COMP_MAX_DETAIL_ENRICHMENT", 18),
-            max_vin_decodes=_env_int("COMP_MAX_VIN_DECODES", 24),
+            max_detail_enrichment=_env_int("COMP_MAX_DETAIL_ENRICHMENT", 8),
+            max_vin_decodes=_env_int("COMP_MAX_VIN_DECODES", 8),
+            personal_fast_path=_env_flag("COMP_PERSONAL_FAST_PATH", True),
             sqlite_path=sqlite_path,
             enable_craigslist=_env_flag("COMP_ENABLE_CRAIGSLIST", True),
             enable_autodev=_env_flag("COMP_ENABLE_AUTODEV", bool(autodev_api_key)),

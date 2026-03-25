@@ -1943,24 +1943,7 @@ function buildStatusMessage(result) {
 }
 
 function buildNotes(result) {
-  const diagnostics = Array.isArray(result.body?.source_health) ? result.body.source_health : [];
-  return diagnostics
-    .filter((item) => {
-      if (!item?.enabled) {
-        return false;
-      }
-      const key = String(item.key || "").trim().toLowerCase();
-      const label = String(item.label || "").trim().toLowerCase();
-      if (["custom_source", "manual_import"].includes(key) || ["custom source", "manual import"].includes(label)) {
-        return false;
-      }
-      const normalizedCount = Number(item.normalized_count || item.count || 0);
-      return normalizedCount > 0;
-    })
-    .map((item) => {
-      const normalizedCount = Number(item.normalized_count || item.count || 0);
-      return `${item.label || item.key}: ${normalizedCount} comps`;
-    });
+  return [];
 }
 
 function renderZippyResult(resultBody) {

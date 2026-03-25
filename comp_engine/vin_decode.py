@@ -31,6 +31,7 @@ class NHTSAVinDecoder:
             f"{self.BASE_URL}{normalized_vin}",
             params=params,
             source_key="nhtsa_vin",
+            timeout_seconds=6,
         )
         results = payload.get("Results") or payload.get("results") or []
         if not results:
