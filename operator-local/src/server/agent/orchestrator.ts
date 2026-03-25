@@ -6,7 +6,7 @@ import { logger } from "@/lib/logger";
 
 import { isTerminalStatus } from "@/server/agent/completion";
 import { executeActionForRun } from "@/server/agent/executor";
-import { decideNextAction } from "@/server/agent/planner";
+import { decideNextAction, isPlannerError } from "@/server/agent/planner";
 import {
   detectLikelyLoop,
   initialMemory,
@@ -110,6 +110,14 @@ function buildObservationBackedFinish(runId: string, goal: string, observation: 
   };
 }
 
+function canFinishFromObservation(goal: string, observation: Awaited<ReturnType<typeof captureObservation>>["observation"]) {
+  return (
+    isSimpleSummaryGoal(goal) &&
+    !observation.startupBlank &&
+    observation.visibleText.trim().length > 80
+  );
+}
+
 function shouldRetryRun(run: Awaited<ReturnType<typeof runRepository.getRun>>, message: string) {
   if (!run) {
     return false;
@@ -207,15 +215,47 @@ export async function continueRun(runId: string) {
       );
       memory = updateMemoryWithObservation(memory, observation);
 
-      const decision = await decideNextAction({
-        model: run.model,
-        reasoningEffort: run.reasoningEffort as "low" | "medium" | "high",
-        workflowGuidance: getWorkflowGuidance(run.workflowMode),
-        goal: run.goal,
-        observation,
-        memory,
-        pendingApproval: false,
-      });
+      let decision;
+      try {
+        decision = await decideNextAction({
+          model: run.model,
+          reasoningEffort: run.reasoningEffort as "low" | "medium" | "high",
+          workflowGuidance: getWorkflowGuidance(run.workflowMode),
+          goal: run.goal,
+          observation,
+          memory,
+          pendingApproval: false,
+        });
+      } catch (error) {
+        if (isPlannerError(error) && canFinishFromObservation(run.goal, observation)) {
+          const fallbackFinish = buildObservationBackedFinish(runId, run.goal, observation);
+          await runRepository.createError({
+            runId,
+            code: "PLANNER_OUTPUT_RECOVERED",
+            message: error.message,
+            details: error.details as never,
+          });
+          await runRepository.upsertFinalOutcome(
+            runId,
+            fallbackFinish.status,
+            fallbackFinish.summary,
+            fallbackFinish.structuredData as never,
+          );
+          run = await runRepository.updateRun(runId, {
+            status: "completed",
+            finishedAt: new Date(),
+            latestUrl: observation.url,
+            latestObservationId: observationRecord.id,
+            memory: memory as never,
+            stepCount: {
+              increment: 1,
+            },
+          });
+          break;
+        }
+
+        throw error;
+      }
 
       if (
         decision.action.kind === "getPageSummary" &&

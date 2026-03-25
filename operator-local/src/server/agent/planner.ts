@@ -46,6 +46,10 @@ class PlannerError extends Error {
   }
 }
 
+export function isPlannerError(error: unknown): error is PlannerError {
+  return error instanceof PlannerError;
+}
+
 export async function decideNextAction(input: PlannerInput): Promise<PlannerDecision> {
   const env = getEnv();
   if (env.OPERATOR_PLANNER_PROVIDER === "ollama") {
