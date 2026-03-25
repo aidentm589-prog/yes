@@ -91,6 +91,14 @@ export const plannerDecisionSchema = z.object({
   rationale: z.string().min(1),
   action: browserActionSchema,
   completionSignal: z.enum(["continue", "needs_approval", "done"]).default("continue"),
+  plannerMeta: z
+    .object({
+      provider: z.enum(["openai", "ollama"]),
+      rawOutput: z.string().min(1),
+      recoveredJson: z.boolean().optional(),
+      validationError: z.string().optional(),
+    })
+    .optional(),
 });
 
 export const createRunSchema = z.object({

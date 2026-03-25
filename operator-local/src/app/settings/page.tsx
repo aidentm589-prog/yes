@@ -1,12 +1,16 @@
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { getEnv } from "@/lib/env";
+import { getProviderReadiness } from "@/server/services/provider-readiness";
 import { ensureDefaultSettings } from "@/server/services/settings-service";
 
 export const revalidate = 0;
 
 export default async function SettingsPage() {
-  const settings = await ensureDefaultSettings();
+  const [settings, readiness] = await Promise.all([
+    ensureDefaultSettings(),
+    getProviderReadiness(),
+  ]);
   const env = getEnv();
 
   return (
@@ -14,6 +18,8 @@ export default async function SettingsPage() {
       <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
         <SectionCard eyebrow="Runtime" title="Environment">
           <div className="space-y-3 text-sm text-slate-700">
+            <p>Planner readiness: {readiness.ready ? "Ready" : "Needs attention"}</p>
+            <p>Planner message: {readiness.message}</p>
             <p>Planner provider: {env.OPERATOR_PLANNER_PROVIDER}</p>
             <p>OpenAI configured: {env.OPENAI_API_KEY ? "Yes" : "No"}</p>
             <p>Model: {env.OPENAI_MODEL}</p>

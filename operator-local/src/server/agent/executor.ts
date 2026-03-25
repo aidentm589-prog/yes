@@ -36,7 +36,7 @@ export async function executeActionForRun(runId: string, action: BrowserAction) 
       label: action.label,
       content: {
         selector: action.selector,
-        text: result.text,
+        text: typeof result.text === "string" ? result.text : String(result.text ?? ""),
       },
     });
   }

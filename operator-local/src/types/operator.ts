@@ -7,8 +7,13 @@ export type InteractiveElement = {
   tag: string;
   role: string | null;
   text: string;
+  name: string | null;
+  ariaLabel: string | null;
   placeholder: string | null;
   type: string | null;
+  href: string | null;
+  disabled: boolean;
+  selectorSource: string | null;
 };
 
 export type ObservationSnapshot = {
@@ -19,6 +24,9 @@ export type ObservationSnapshot = {
   interactiveMap: InteractiveElement[];
   recentErrors: string[];
   screenshotPath?: string;
+  startupBlank?: boolean;
+  phase?: "pre_action" | "post_action" | "checkpoint";
+  interactiveSummary?: string;
 };
 
 export type PolicySnapshot = {
@@ -36,6 +44,11 @@ export type RunMemory = {
   discoveredFacts: string[];
   completedSteps: string[];
   blockedReasons: string[];
+  visitedUrls: string[];
+  unresolvedQuestions: string[];
+  extractedEntities: string[];
+  taskSubgoals: string[];
+  lastPlannerError?: string;
   recentActions: Array<{
     kind: BrowserAction["kind"];
     fingerprint: string;

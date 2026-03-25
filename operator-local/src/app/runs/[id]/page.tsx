@@ -24,6 +24,16 @@ export default async function RunDetailPage({
   }
 
   const latestPendingApproval = run.approvals.find((approval) => approval.status === "pending");
+  const plannerAction = run.actions.find((action) => {
+    const payload = action.inputPayload as Record<string, unknown> | null;
+    const plannerMeta = payload?.plannerMeta as Record<string, unknown> | undefined;
+    return typeof plannerMeta?.provider === "string";
+  });
+  const plannerPayload = plannerAction?.inputPayload as Record<string, unknown> | null | undefined;
+  const plannerMeta = plannerPayload?.plannerMeta as Record<string, unknown> | undefined;
+  const plannerProvider =
+    typeof plannerMeta?.provider === "string" ? plannerMeta.provider : "unknown";
+  const hadRetryableErrors = run.errors.some((error) => error.code === "RETRYABLE_STEP_FAILURE");
 
   return (
     <AppShell currentPath="/runs">
@@ -41,11 +51,17 @@ export default async function RunDetailPage({
                 <div className="rounded-[1.3rem] bg-[#fcfbf6] p-4">
                   <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Planner</p>
                   <p className="mt-2 text-lg font-semibold">{run.model}</p>
+                  <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500">
+                    Provider: {plannerProvider}
+                  </p>
                 </div>
                 <div className="rounded-[1.3rem] bg-[#fcfbf6] p-4">
                   <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Steps</p>
                   <p className="mt-2 text-lg font-semibold">
                     {run.stepCount} / {run.maxSteps}
+                  </p>
+                  <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500">
+                    Retryable errors seen: {hadRetryableErrors ? "yes" : "no"}
                   </p>
                 </div>
               </div>
@@ -58,6 +74,14 @@ export default async function RunDetailPage({
                 <div className="rounded-[1.4rem] border border-rose-200 bg-rose-50 p-4">
                   <p className="text-xs uppercase tracking-[0.24em] text-rose-700">Run failed</p>
                   <p className="mt-2 text-sm text-rose-900">{run.errors[0].message}</p>
+                  {run.errors[0].details &&
+                  typeof run.errors[0].details === "object" &&
+                  run.errors[0].details !== null &&
+                  "retryAttempt" in (run.errors[0].details as Record<string, unknown>) ? (
+                    <p className="mt-2 text-xs text-rose-700">
+                      Retryable failure attempts were recorded before the run stopped.
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
               {latestPendingApproval ? (
@@ -84,6 +108,21 @@ export default async function RunDetailPage({
             {run.finalOutcome ? (
               <div className="space-y-3">
                 <p className="text-lg text-slate-900">{run.finalOutcome.summary}</p>
+                {run.memory &&
+                typeof run.memory === "object" &&
+                run.memory !== null &&
+                "discoveredFacts" in (run.memory as Record<string, unknown>) ? (
+                  <div className="rounded-[1.2rem] bg-[#fcfbf6] p-4 text-sm text-slate-700">
+                    <p className="font-semibold text-slate-900">Facts gathered</p>
+                    <ul className="mt-2 space-y-1">
+                      {(((run.memory as Record<string, unknown>).discoveredFacts as string[]) ?? [])
+                        .slice(0, 6)
+                        .map((fact) => (
+                          <li key={fact}>• {fact}</li>
+                        ))}
+                    </ul>
+                  </div>
+                ) : null}
                 <pre className="overflow-x-auto rounded-[1.3rem] bg-slate-950 p-4 text-sm text-slate-100">
                   {JSON.stringify(run.finalOutcome.structuredData ?? {}, null, 2)}
                 </pre>
@@ -154,6 +193,11 @@ export default async function RunDetailPage({
                     <pre className="mt-3 overflow-x-auto rounded-[1rem] bg-white p-3 text-xs text-slate-700">
                       {JSON.stringify(action.inputPayload, null, 2)}
                     </pre>
+                    {action.outputPayload ? (
+                      <pre className="mt-3 overflow-x-auto rounded-[1rem] bg-slate-950 p-3 text-xs text-slate-100">
+                        {JSON.stringify(action.outputPayload, null, 2)}
+                      </pre>
+                    ) : null}
                   </div>
                 ))
               ) : (
@@ -198,6 +242,11 @@ export default async function RunDetailPage({
                     <div key={observation.id} className="rounded-[1.2rem] bg-white p-4">
                       <p className="text-sm font-semibold text-slate-950">{observation.title || observation.url}</p>
                       <p className="mt-2 text-sm text-slate-700">{truncate(observation.summary, 260)}</p>
+                      {observation.recentErrors ? (
+                        <pre className="mt-3 overflow-x-auto text-xs text-slate-500">
+                          {JSON.stringify(observation.recentErrors, null, 2)}
+                        </pre>
+                      ) : null}
                     </div>
                   ))}
                 </div>

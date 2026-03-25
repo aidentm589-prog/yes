@@ -5,7 +5,7 @@ type OllamaGenerateResponse = {
   done: boolean;
 };
 
-export async function generateWithOllama(prompt: string) {
+export async function generateWithOllama(prompt: string, system?: string) {
   const env = getEnv();
   const response = await fetch(`${env.OLLAMA_BASE_URL}/api/generate`, {
     method: "POST",
@@ -15,6 +15,7 @@ export async function generateWithOllama(prompt: string) {
     body: JSON.stringify({
       model: env.OLLAMA_MODEL,
       prompt,
+      system,
       stream: false,
       format: "json",
     }),

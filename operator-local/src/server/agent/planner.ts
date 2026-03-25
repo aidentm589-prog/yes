@@ -36,15 +36,14 @@ const plannerTool = {
   },
 } as const;
 
-function normalizePlannerDecision(raw: Record<string, unknown>) {
-  const actionJson = typeof raw.actionJson === "string" ? raw.actionJson : "";
-  const action = JSON.parse(actionJson) as Record<string, unknown>;
+class PlannerError extends Error {
+  details?: Record<string, unknown>;
 
-  return {
-    rationale: raw.rationale,
-    completionSignal: raw.completionSignal,
-    action,
-  };
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message);
+    this.name = "PlannerError";
+    this.details = details;
+  }
 }
 
 export async function decideNextAction(input: PlannerInput): Promise<PlannerDecision> {
@@ -54,6 +53,82 @@ export async function decideNextAction(input: PlannerInput): Promise<PlannerDeci
   }
 
   return decideNextActionWithOpenAI(input);
+}
+
+function stripMarkdownFence(raw: string) {
+  return raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+}
+
+export function extractJsonObject(raw: string) {
+  const cleaned = stripMarkdownFence(raw);
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    return { jsonText: cleaned, recovered: false };
+  }
+
+  const sliced = cleaned.slice(firstBrace, lastBrace + 1);
+  return { jsonText: sliced, recovered: sliced !== cleaned };
+}
+
+function normalizePlannerDecision(
+  raw: Record<string, unknown>,
+  provider: "openai" | "ollama",
+  rawOutput: string,
+  recoveredJson = false,
+) {
+  const actionValue =
+    typeof raw.actionJson === "string"
+      ? JSON.parse(raw.actionJson)
+      : ((raw.action ?? raw.actionPayload) as Record<string, unknown>);
+
+  return plannerDecisionSchema.parse({
+    rationale: raw.rationale,
+    completionSignal: raw.completionSignal,
+    action: actionValue,
+    plannerMeta: {
+      provider,
+      rawOutput,
+      recoveredJson,
+    },
+  });
+}
+
+export function parsePlannerResponse(
+  rawOutput: string,
+  provider: "openai" | "ollama",
+  options?: { actionJsonString?: boolean },
+) {
+  const { jsonText, recovered } = extractJsonObject(rawOutput);
+
+  try {
+    const parsed = JSON.parse(jsonText) as Record<string, unknown>;
+    const normalized = options?.actionJsonString
+      ? normalizePlannerDecision(parsed, provider, rawOutput, recovered)
+      : plannerDecisionSchema.parse({
+          ...parsed,
+          action:
+            typeof parsed.actionJson === "string"
+              ? JSON.parse(parsed.actionJson)
+              : parsed.action,
+          plannerMeta: {
+            provider,
+            rawOutput,
+            recoveredJson: recovered,
+          },
+        });
+
+    return normalized;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown planner parse error";
+    throw new PlannerError("Planner returned invalid JSON output.", {
+      provider,
+      rawOutput,
+      jsonText,
+      validationError: message,
+    });
+  }
 }
 
 async function decideNextActionWithOpenAI(input: PlannerInput): Promise<PlannerDecision> {
@@ -101,17 +176,37 @@ async function decideNextActionWithOpenAI(input: PlannerInput): Promise<PlannerD
     throw new Error("Planner did not return a function call.");
   }
 
-  return plannerDecisionSchema.parse(
-    normalizePlannerDecision(JSON.parse(toolCall.arguments) as Record<string, unknown>),
-  );
+  try {
+    return normalizePlannerDecision(
+      JSON.parse(toolCall.arguments) as Record<string, unknown>,
+      "openai",
+      toolCall.arguments,
+      false,
+    );
+  } catch (error) {
+    if (error instanceof PlannerError) {
+      throw error;
+    }
+    const message = error instanceof Error ? error.message : "Unknown OpenAI planner error";
+    throw new PlannerError("OpenAI planner output could not be normalized.", {
+      provider: "openai",
+      rawOutput: toolCall.arguments,
+      validationError: message,
+    });
+  }
 }
 
 async function decideNextActionWithOllama(input: PlannerInput): Promise<PlannerDecision> {
   const instructions = buildPlannerPrompt(input.workflowGuidance);
+  const payload = {
+    goal: input.goal,
+    pendingApproval: input.pendingApproval,
+    memory: input.memory,
+    observation: input.observation,
+  };
   const prompt = [
-    instructions,
     "Return JSON only.",
-    "The JSON must have this exact shape:",
+    "Use this exact top-level shape:",
     JSON.stringify(
       {
         rationale: "short reason",
@@ -125,21 +220,29 @@ async function decideNextActionWithOllama(input: PlannerInput): Promise<PlannerD
       2,
     ),
     "Allowed action kinds: navigate, click, type, selectOption, pressKey, scroll, wait, getPageSummary, extractText, captureScreenshot, requestApproval, finish.",
-    "For requestApproval include: kind, reason, actionPayload.",
-    "For finish include: kind, summary, optional structuredData.",
-    "Do not wrap the JSON in markdown.",
-    JSON.stringify(
-      {
-        goal: input.goal,
-        pendingApproval: input.pendingApproval,
-        memory: input.memory,
-        observation: input.observation,
-      },
-      null,
-      2,
-    ),
+    "For requestApproval include kind, reason, and actionPayload.",
+    "For finish include kind, summary, and optional structuredData.",
+    "If the observation is startupBlank or the url is about:blank, navigate first unless the goal is already complete.",
+    "Do not wrap the response in markdown or add commentary outside the JSON object.",
+    JSON.stringify(payload, null, 2),
   ].join("\n\n");
 
-  const raw = await generateWithOllama(prompt);
-  return plannerDecisionSchema.parse(JSON.parse(raw));
+  const raw = await generateWithOllama(prompt, instructions);
+
+  try {
+    return parsePlannerResponse(raw, "ollama");
+  } catch (error) {
+    if (!(error instanceof PlannerError)) {
+      throw error;
+    }
+
+    const retryPrompt = [
+      prompt,
+      "Your last response could not be parsed or validated.",
+      `Validation error: ${error.details?.validationError ?? error.message}`,
+      "Return one corrected JSON object only.",
+    ].join("\n\n");
+    const retriedRaw = await generateWithOllama(retryPrompt, instructions);
+    return parsePlannerResponse(retriedRaw, "ollama");
+  }
 }

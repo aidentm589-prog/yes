@@ -7,7 +7,13 @@ import { logger } from "@/lib/logger";
 import { isTerminalStatus } from "@/server/agent/completion";
 import { executeActionForRun } from "@/server/agent/executor";
 import { decideNextAction } from "@/server/agent/planner";
-import { detectLikelyLoop, initialMemory, updateMemoryWithAction, updateMemoryWithObservation } from "@/server/agent/memory";
+import {
+  detectLikelyLoop,
+  initialMemory,
+  recordPlannerIssue,
+  updateMemoryWithAction,
+  updateMemoryWithObservation,
+} from "@/server/agent/memory";
 import { validateActionAgainstPolicy } from "@/server/agent/policies";
 import { compareOptionsWorkflow } from "@/server/agent/workflows/compareOptions";
 import { extractAndSummarizeWorkflow } from "@/server/agent/workflows/extractAndSummarize";
@@ -29,20 +35,29 @@ function getWorkflowGuidance(mode: keyof typeof workflows) {
   return workflows[mode].guidance;
 }
 
-async function captureObservation(runId: string, label: string) {
+async function captureObservation(
+  runId: string,
+  label: string,
+  phase: "pre_action" | "post_action" | "checkpoint" = "checkpoint",
+) {
   const { page } = await getBrowserSession(runId);
   const screenshotPath = await captureRunScreenshot(runId, label);
-  const observation = await inspectPage(page);
+  const observation = await inspectPage(page, phase);
   observation.screenshotPath = screenshotPath;
 
   const record = await runRepository.createObservation({
     runId,
     url: observation.url,
     title: observation.title,
-    summary: observation.summary,
+    summary: `[${phase.replaceAll("_", " ")}] ${observation.summary}`,
     visibleText: observation.visibleText,
     interactiveMap: observation.interactiveMap as never,
-    recentErrors: observation.recentErrors as never,
+    recentErrors: [
+      ...observation.recentErrors,
+      observation.interactiveSummary ? `interactive-summary:${observation.interactiveSummary}` : "",
+      observation.startupBlank ? "startup-blank:true" : "",
+      `phase:${phase}`,
+    ].filter(Boolean) as never,
     screenshotPath,
   });
 
@@ -66,6 +81,19 @@ function shouldObserveAfterAction(action: BrowserAction) {
 
 function nextFailureStatus(runStepCount: number, maxSteps: number): RunStatus {
   return runStepCount >= maxSteps ? "failed" : "running";
+}
+
+function shouldRetryRun(run: Awaited<ReturnType<typeof runRepository.getRun>>, message: string) {
+  if (!run) {
+    return false;
+  }
+
+  return (
+    run.retryCount < run.maxRetries &&
+    /Selector not found|Timeout|Target page, context or browser has been closed|Navigation.*interrupted|net::ERR/i.test(
+      message,
+    )
+  );
 }
 
 async function failRun(runId: string, code: string, message: string, details?: unknown) {
@@ -148,6 +176,7 @@ export async function continueRun(runId: string) {
       const { observation, observationRecord, screenshotRecord } = await captureObservation(
         runId,
         `step-${run.stepCount + 1}`,
+        "pre_action",
       );
       memory = updateMemoryWithObservation(memory, observation);
 
@@ -233,10 +262,11 @@ export async function continueRun(runId: string) {
       let actionScreenshotId = screenshotRecord.id;
 
       if (shouldObserveAfterAction(decision.action)) {
-        const after = await captureObservation(runId, `after-${decision.action.kind}`);
+        const after = await captureObservation(runId, `after-${decision.action.kind}`, "post_action");
         latestObservationId = after.observationRecord.id;
         latestUrl = after.observation.url;
         actionScreenshotId = after.screenshotRecord.id;
+        memory = updateMemoryWithObservation(memory, after.observation);
       }
 
       memory = updateMemoryWithAction(memory, decision.action, latestUrl, decision.rationale);
@@ -250,11 +280,23 @@ export async function continueRun(runId: string) {
       });
 
       if (decision.action.kind === "finish") {
+        const structuredData = {
+          ...(decision.action.structuredData ?? {}),
+          factsGathered: memory.discoveredFacts,
+          pagesVisited: memory.visitedUrls,
+          actionsTaken: memory.completedSteps,
+          unresolvedIssues: memory.blockedReasons,
+          evidence: {
+            latestUrl,
+            latestObservationId,
+            latestScreenshotId: actionScreenshotId,
+          },
+        };
         await runRepository.upsertFinalOutcome(
           runId,
           "completed",
           decision.action.summary,
-          (decision.action.structuredData ?? {}) as never,
+          structuredData as never,
         );
         run = await runRepository.updateRun(runId, {
           status: "completed",
@@ -286,6 +328,27 @@ export async function continueRun(runId: string) {
         message: "Step execution failed",
         data: { runId, error: message },
       });
+
+      memory = recordPlannerIssue(memory, message);
+
+      if (shouldRetryRun(run, message)) {
+        await runRepository.createError({
+          runId,
+          code: "RETRYABLE_STEP_FAILURE",
+          message,
+          details: { retryAttempt: run.retryCount + 1 } as never,
+        });
+        run = await runRepository.updateRun(runId, {
+          status: "running",
+          retryCount: {
+            increment: 1,
+          },
+          memory: memory as never,
+          lastHeartbeatAt: new Date(),
+        });
+        continue;
+      }
+
       run = await failRun(runId, "STEP_FAILURE", message, {
         blockedReasons: [...memory.blockedReasons, message].slice(-8),
       });

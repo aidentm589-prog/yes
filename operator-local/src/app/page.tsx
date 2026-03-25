@@ -6,13 +6,18 @@ import { SectionCard } from "@/components/section-card";
 import { TaskComposer } from "@/components/task-composer";
 import { formatRelativeTime, truncate } from "@/lib/utils";
 import { getEnv } from "@/lib/env";
+import { getProviderReadiness } from "@/server/services/provider-readiness";
 import { ensureDefaultSettings } from "@/server/services/settings-service";
 import { listRuns } from "@/server/services/run-service";
 
 export const revalidate = 0;
 
 export default async function HomePage() {
-  const [runs, settings] = await Promise.all([listRuns(), ensureDefaultSettings()]);
+  const [runs, settings, readiness] = await Promise.all([
+    listRuns(),
+    ensureDefaultSettings(),
+    getProviderReadiness(),
+  ]);
   const env = getEnv();
 
   return (
@@ -30,7 +35,9 @@ export default async function HomePage() {
             </div>
             <div className="rounded-[1.4rem] bg-[#dae8de] px-5 py-4 text-slate-900">
               <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Planner model</p>
-              <p className="mt-3 text-xl font-semibold">{env.OPENAI_MODEL}</p>
+              <p className="mt-3 text-xl font-semibold">
+                {env.OPERATOR_PLANNER_PROVIDER === "ollama" ? env.OLLAMA_MODEL : env.OPENAI_MODEL}
+              </p>
             </div>
             <div className="rounded-[1.4rem] bg-[#efe1d0] px-5 py-4 text-slate-900">
               <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Settings loaded</p>
@@ -42,6 +49,18 @@ export default async function HomePage() {
                 {env.OPERATOR_PLANNER_PROVIDER === "ollama" ? `${env.OPERATOR_PLANNER_PROVIDER} · ${env.OLLAMA_MODEL}` : `${env.OPERATOR_PLANNER_PROVIDER} · ${env.OPENAI_MODEL}`}
               </p>
             </div>
+          </div>
+          <div
+            className={`mb-6 rounded-[1.3rem] border px-5 py-4 text-sm ${
+              readiness.ready
+                ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                : "border-amber-200 bg-amber-50 text-amber-900"
+            }`}
+          >
+            <p className="font-semibold">
+              {readiness.ready ? "Planner ready" : "Planner needs attention"}
+            </p>
+            <p className="mt-1">{readiness.message}</p>
           </div>
           <TaskComposer />
         </SectionCard>

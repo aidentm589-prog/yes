@@ -15,6 +15,10 @@ export function LiveRunController({
   const stopped = useRef(false);
 
   useEffect(() => {
+    if (!["queued", "running"].includes(status)) {
+      return;
+    }
+
     const refreshTimer = window.setInterval(() => {
       router.refresh();
     }, 3_000);
@@ -22,7 +26,7 @@ export function LiveRunController({
     return () => {
       window.clearInterval(refreshTimer);
     };
-  }, [router]);
+  }, [router, status]);
 
   useEffect(() => {
     if (!["queued", "running"].includes(status) || inFlight.current || stopped.current) {

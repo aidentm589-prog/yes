@@ -10,14 +10,33 @@ export function initialMemory(goal: string, workflowMode: WorkflowMode): RunMemo
     discoveredFacts: [],
     completedSteps: [],
     blockedReasons: [],
+    visitedUrls: [],
+    unresolvedQuestions: [],
+    extractedEntities: [],
+    taskSubgoals: [],
     recentActions: [],
   };
 }
 
 export function updateMemoryWithObservation(memory: RunMemory, observation: ObservationSnapshot): RunMemory {
+  const visibleFacts = observation.visibleText
+    .split(/[\n.]/)
+    .map((segment) => segment.replace(/\s+/g, " ").trim())
+    .filter((segment) => segment.length > 20)
+    .slice(0, 3);
+
   return {
     ...memory,
     latestObservationSummary: observation.summary,
+    discoveredFacts: [...memory.discoveredFacts, ...visibleFacts].slice(-12),
+    visitedUrls: observation.url
+      ? [...new Set([...memory.visitedUrls, observation.url])].slice(-12)
+      : memory.visitedUrls,
+    unresolvedQuestions: observation.startupBlank
+      ? [...memory.unresolvedQuestions, "A useful destination page has not been opened yet."].slice(
+          -6,
+        )
+      : memory.unresolvedQuestions,
   };
 }
 
@@ -32,6 +51,10 @@ export function updateMemoryWithAction(
     completedSteps: completedStep
       ? [...memory.completedSteps, completedStep].slice(-10)
       : memory.completedSteps,
+    taskSubgoals: [
+      ...memory.taskSubgoals,
+      `${action.kind} on ${url || "unknown page"}`,
+    ].slice(-10),
     recentActions: [
       ...memory.recentActions,
       {
@@ -40,6 +63,14 @@ export function updateMemoryWithAction(
         url,
       },
     ].slice(-6),
+  };
+}
+
+export function recordPlannerIssue(memory: RunMemory, message: string): RunMemory {
+  return {
+    ...memory,
+    lastPlannerError: message,
+    blockedReasons: [...memory.blockedReasons, message].slice(-8),
   };
 }
 
