@@ -13,6 +13,7 @@ from .bulk_parser import ParsedBulkVehicle, parse_bulk_vehicle_text
 from .config import EngineConfig
 from .http import HttpClient
 from .detailed_report import DetailedVehicleReportService
+from .llm import LlmClient
 from .models import NormalizedListing, SourceRunResult, VehicleQuery
 from .link_extract import ListingLinkExtractor
 from .query_parser import parse_vehicle_query
@@ -53,6 +54,7 @@ class VehicleCompsEngine:
         )
         self.link_extractor = ListingLinkExtractor(self.http_client)
         self.vin_decoder = NHTSAVinDecoder(self.http_client)
+        self.llm = LlmClient(self.http_client)
         self.detailed_reports = DetailedVehicleReportService(self.http_client)
         self.adapters = self._build_adapters()
 
@@ -98,7 +100,8 @@ class VehicleCompsEngine:
         cache_key = query.cache_key(enabled_source_keys)
         if include_detailed_report:
             cache_key = f"{cache_key}:detailed"
-        if not payload.get("force_refresh"):
+        use_cache = not include_detailed_report and not payload.get("force_refresh")
+        if use_cache:
             cached = self.repository.get_cache_json(cache_key)
             if cached:
                 return cached
@@ -120,13 +123,15 @@ class VehicleCompsEngine:
 
         if len(included) < 3:
             response = self._build_low_data_response(query, source_results, included, excluded, enabled_source_keys)
-            self.repository.set_cache_json(cache_key, response, ttl_seconds=self.config.cache_ttl_seconds)
+            if use_cache:
+                self.repository.set_cache_json(cache_key, response, ttl_seconds=self.config.cache_ttl_seconds)
             return response
 
         response = self._build_success_response(query, source_results, included, excluded)
         if include_detailed_report:
             response["detailed_vehicle_report"] = self.detailed_reports.get_detailed_vehicle_report(query, response, included)
-        self.repository.set_cache_json(cache_key, response, ttl_seconds=self.config.cache_ttl_seconds)
+        if use_cache:
+            self.repository.set_cache_json(cache_key, response, ttl_seconds=self.config.cache_ttl_seconds)
         return response
 
     def _evaluate_zippy(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -189,13 +194,13 @@ class VehicleCompsEngine:
         avg_all = self.calculate_market_value(valid)
         avg_closest = self._average_price_of_closest_mileage(valid, query.mileage, 20) if query.mileage else avg_all
         anchor = avg_closest or avg_all
-        kbb_adjuster = self._build_kbb_adjuster(avg_all, query.mileage, valid)
         craigslist_average = self._craigslist_average(valid)
+        full_price_range = self._build_full_price_range(valid)
         zippy_values = {
             "average_all_comps": money(avg_all),
             "average_20_closest_mileage_comps": money(avg_closest) if avg_closest else "",
             "craigslist_average": craigslist_average,
-            "kelly_blue_book_adjuster": kbb_adjuster["value"],
+            "full_price_range": full_price_range,
             "very_poor_buy_price": money(anchor * 0.55) if anchor else "",
             "good_buy_price": money(anchor * 0.72) if anchor else "",
             "excellent_buy_price": money(anchor * 0.84) if anchor else "",
@@ -276,7 +281,6 @@ class VehicleCompsEngine:
                 if self._listing_market_price(listing) is not None
             ]
             fallback_average = self.calculate_market_value(fallback_priced)
-            kbb_adjuster = self._build_kbb_adjuster(fallback_average, query.mileage, fallback_priced)
             return {
                 "evaluation_engine": "personal",
                 "mode": "beta_v1",
@@ -290,11 +294,11 @@ class VehicleCompsEngine:
                     "comp_count_used": len(fallback_priced),
                     "craigslist_average": self._craigslist_average(fallback_priced),
                     "clean_title_benchmark": money(fallback_average) if fallback_average else "",
-                    "kelly_blue_book_adjuster": kbb_adjuster["value"],
+                    "full_price_range": self._build_full_price_range(fallback_priced),
                 },
                 "comparable_count": len(included),
                 "matched_comps": [self._listing_public_dict(listing) for listing in fallback_priced[:10]],
-                "sample_listings": self._serialize_sample_listings(fallback_priced[:8]),
+                "sample_listings": self._serialize_sample_listings(fallback_priced[:10]),
                 "source_breakdown": self._source_breakdown(included),
                 "source_health": [result.to_health_dict() for result in source_results],
                 "message": "Returned the best available market comps found, even though mileage-matched comps were limited.",
@@ -308,7 +312,6 @@ class VehicleCompsEngine:
         )[:10]
         closest_average = self.calculate_expected_resale_value(query.mileage or 0, valid)
         clean_title_benchmark = self.calculate_market_value(included)
-        kbb_adjuster = self._build_kbb_adjuster(clean_title_benchmark, query.mileage, included)
         craigslist_average = self._craigslist_average(included)
         personal_value = {
             "estimated_personal_market_value": money(closest_average),
@@ -316,7 +319,7 @@ class VehicleCompsEngine:
             "comp_count_used": len(closest),
             "craigslist_average": craigslist_average,
             "clean_title_benchmark": money(clean_title_benchmark) if clean_title_benchmark else "",
-            "kelly_blue_book_adjuster": kbb_adjuster["value"],
+            "full_price_range": self._build_full_price_range(included),
         }
         response = {
             "evaluation_engine": "personal",
@@ -328,7 +331,7 @@ class VehicleCompsEngine:
             "personal_value": personal_value,
             "comparable_count": len(included),
             "matched_comps": [self._listing_public_dict(listing) for listing in closest],
-            "sample_listings": self._serialize_sample_listings(closest[:8]),
+            "sample_listings": self._serialize_sample_listings(closest[:10]),
             "source_breakdown": self._source_breakdown(included),
             "source_health": [result.to_health_dict() for result in source_results],
             "message": "Personal Value Beta V1 priced your car from the 10 closest-mileage comps in the current market.",
@@ -431,6 +434,7 @@ class VehicleCompsEngine:
             return
         if not decoded:
             return
+        query.vin_decode_data = decoded
         if decoded.get("year"):
             query.year = int(decoded["year"])
         if decoded.get("make"):
@@ -452,6 +456,67 @@ class VehicleCompsEngine:
         if decoded.get("fuel_type"):
             query.fuel_type = str(decoded["fuel_type"])
         query.vin_decoded_used = True
+        query.vin_decode_summary = self._summarize_vin_decode(decoded)
+
+    def _summarize_vin_decode(self, decoded: dict[str, Any]) -> dict[str, Any]:
+        compact = {
+            "year": decoded.get("year") or "",
+            "make": decoded.get("make") or "",
+            "model": decoded.get("model") or "",
+            "trim": decoded.get("trim") or decoded.get("series") or "",
+            "body_style": decoded.get("body_style") or "",
+            "drivetrain": decoded.get("drivetrain") or "",
+            "engine": decoded.get("engine") or "",
+            "transmission": decoded.get("transmission") or "",
+            "fuel_type": decoded.get("fuel_type") or "",
+            "engine_hp": decoded.get("engine_hp") or "",
+        }
+        fallback_summary = " ".join(
+            part for part in [
+                str(compact.get("year") or ""),
+                compact.get("make") or "",
+                compact.get("model") or "",
+                compact.get("trim") or "",
+            ] if part
+        ).strip()
+        fallback_summary = (
+            f"NHTSA decoded this VIN as {fallback_summary or 'this vehicle'}."
+            f" {compact.get('engine') or 'Engine data was limited.'}"
+            f" {compact.get('transmission') or ''}".strip()
+        )
+        prompt = (
+            "You are summarizing decoded VIN data for a vehicle evaluation. "
+            "Return only JSON with keys summary and highlights. "
+            "summary should be one short sentence that explains what NHTSA identified. "
+            "highlights should be an array of 2 to 4 short strings with the most useful specs for the evaluator. "
+            f"Decoded VIN data: {json.dumps(compact, ensure_ascii=True)}"
+        )
+        try:
+            payload = self.llm.complete_json(
+                prompt=prompt,
+                openai_model=os.getenv("OPENAI_SOFTWARE_CHAT_MODEL", "gpt-5.4-mini").strip() or "gpt-5.4-mini",
+                source_key="vin_decode_summary",
+                timeout_seconds=15,
+            )
+            return {
+                "summary": str(payload.get("summary") or fallback_summary).strip(),
+                "highlights": [
+                    str(item).strip()
+                    for item in (payload.get("highlights") or [])
+                    if str(item).strip()
+                ][:4],
+            }
+        except Exception:
+            highlights = [
+                compact.get("engine") or "",
+                compact.get("drivetrain") or "",
+                compact.get("transmission") or "",
+                compact.get("fuel_type") or "",
+            ]
+            return {
+                "summary": fallback_summary,
+                "highlights": [item for item in highlights if item][:4],
+            }
 
     def _run_sources(self, query: VehicleQuery, preferred_keys: list[str] | None = None) -> list[SourceRunResult]:
         source_results: list[SourceRunResult] = []
@@ -907,7 +972,7 @@ class VehicleCompsEngine:
         vehicle_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         min_price = max(1000, int(baseline_value // 500) * 500)
-        max_price = min_price + 5000
+        max_price = min_price + 10000
         context = self._sanitize_upgrade_context(vehicle_context or {})
         class_specs = self._upgrade_class_specs()
         grouped_candidates: dict[str, list[NormalizedListing]] = {}
@@ -988,8 +1053,6 @@ class VehicleCompsEngine:
         body_variants: list[str],
     ) -> list[NormalizedListing]:
         marketcheck_adapter = next((adapter for adapter in self.adapters if adapter.key == "marketcheck" and adapter.is_enabled()), None)
-        if marketcheck_adapter is None:
-            return []
 
         variants: list[dict[str, Any]] = []
         base = {
@@ -1021,6 +1084,8 @@ class VehicleCompsEngine:
             if signature in seen_params:
                 continue
             seen_params.add(signature)
+            if marketcheck_adapter is None:
+                break
             try:
                 payload = self.http_client.get_json(
                     "https://api.marketcheck.com/v2/search/car/active",
@@ -1040,6 +1105,37 @@ class VehicleCompsEngine:
                 normalized.append(item)
             if len(normalized) >= 30:
                 break
+
+        cached_payloads = self.repository.get_upgrade_candidate_payloads(
+            min_price=min_price,
+            max_price=max_price,
+            body_variants=body_variants,
+            state=str(vehicle_context.get("state") or ""),
+            exclude_make=str(vehicle_context.get("make") or ""),
+            exclude_model=str(vehicle_context.get("model") or ""),
+            limit=220,
+        )
+        if len(cached_payloads) < 24:
+            cached_payloads.extend(
+                self.repository.get_upgrade_candidate_payloads(
+                    min_price=min_price,
+                    max_price=max_price,
+                    body_variants=body_variants,
+                    state="",
+                    exclude_make=str(vehicle_context.get("make") or ""),
+                    exclude_model=str(vehicle_context.get("model") or ""),
+                    limit=220,
+                )
+            )
+        for raw in cached_payloads:
+            if not isinstance(raw, dict):
+                continue
+            item = marketcheck_adapter.normalize_listing(raw, dummy_query) if marketcheck_adapter is not None else None
+            if item is None:
+                item = self._listing_from_payload(raw)
+            if item is None:
+                continue
+            normalized.append(item)
 
         deduped = self._dedupe_listings(normalized)
         current_make = str(vehicle_context.get("make") or "").lower()
@@ -1066,7 +1162,7 @@ class VehicleCompsEngine:
         class_key: str,
     ) -> list[NormalizedListing]:
         scored: list[tuple[float, NormalizedListing]] = []
-        price_cap = baseline_value + 5000
+        price_cap = baseline_value + 10000
         for listing in listings:
             score_breakdown = self._upgrade_score_breakdown(listing, baseline_value, price_cap, vehicle_context, class_key)
             listing.metadata["upgrade_scores"] = score_breakdown
@@ -1186,6 +1282,10 @@ class VehicleCompsEngine:
             score += 20
         if current_is_luxury and "luxury" in listing_focuses:
             score += 18
+        if current_is_sporty and self._upgrade_performance_score(listing) >= 78:
+            score += 12
+        if current_is_luxury and self._upgrade_luxury_score(listing) >= 78:
+            score += 10
         if not current_is_sporty and not current_is_luxury and class_key == "suv" and "spacious" in listing_focuses:
             score += 14
         if not current_is_sporty and class_key == "truck" and "transporting space" in listing_focuses:
@@ -1197,6 +1297,9 @@ class VehicleCompsEngine:
         if isinstance(current_year, int) and listing.year and listing.year >= current_year:
             score += min(8, (listing.year - current_year) * 2)
         score += min(8, price_position * 10)
+        sticker_text = " ".join([str(listing.make or ""), str(listing.model or ""), str(listing.trim or ""), str(listing.engine or "")]).lower()
+        if any(token in sticker_text for token in ["rs", "amg", "m5", "m3", "m4", "c63", "ct4-v", "ct5-v", "s4", "s5", "s6", "s7", "s8", "sq5", "macan", "x3 m40", "x5", "trackhawk", "trx", "raptor", "hellcat"]):
+            score += 14
         return min(score, 100.0)
 
     def _classify_upgrade_body(self, listing: NormalizedListing) -> str:
@@ -1229,8 +1332,7 @@ class VehicleCompsEngine:
         vehicle_context: dict[str, Any],
         class_key: str,
     ) -> list[NormalizedListing]:
-        api_key = os.getenv("OPENAI_API_KEY", "").strip()
-        if not api_key or not listings:
+        if not listings:
             return []
         model = os.getenv("OPENAI_SOFTWARE_CHAT_MODEL", "gpt-5.4-mini").strip() or "gpt-5.4-mini"
         payload_items = []
@@ -1251,19 +1353,12 @@ class VehicleCompsEngine:
             f"Class: {class_key}. Candidates: {json.dumps(payload_items, ensure_ascii=True)}"
         )
         try:
-            status, body, _ = self.http_client.request(
-                "POST",
-                "https://api.openai.com/v1/responses",
-                headers={"Authorization": f"Bearer {api_key}"},
-                json_body={"model": model, "input": prompt},
+            data = self.llm.complete_json(
+                prompt=prompt,
+                openai_model=model,
                 source_key="upgrade_ranking_llm",
                 timeout_seconds=20,
             )
-            if status >= 400:
-                return []
-            response = json.loads(body.decode("utf-8"))
-            text = DetailedVehicleReportService._extract_response_text(self.detailed_reports, response)
-            data = json.loads(text[text.find("{"): text.rfind("}") + 1])
             ordered_ids = [int(value) for value in data.get("ordered_ids") or [] if str(value).isdigit()]
         except Exception as exc:  # noqa: BLE001
             LOGGER.warning("Upgrade reranking LLM fallback triggered: %s", exc)
@@ -1296,6 +1391,62 @@ class VehicleCompsEngine:
             "upgrade_scores": listing.metadata.get("upgrade_scores") or {},
             "upgrade_blurb": listing.metadata.get("upgrade_blurb") or "",
         }
+
+    def _listing_from_payload(self, payload: dict[str, Any]) -> NormalizedListing | None:
+        try:
+            return NormalizedListing(
+                source=str(payload.get("source") or "cached"),
+                source_listing_id=str(payload.get("source_listing_id") or payload.get("vin") or payload.get("url") or ""),
+                source_label=str(payload.get("source_label") or payload.get("source") or "Cached Market"),
+                url=str(payload.get("url") or "").strip(),
+                fetched_at=str(payload.get("fetched_at") or datetime.now(timezone.utc).isoformat()),
+                year=self._payload_to_int(payload.get("year")),
+                make=str(payload.get("make") or "").strip(),
+                model=str(payload.get("model") or "").strip(),
+                trim=str(payload.get("trim") or "").strip(),
+                body_style=str(payload.get("body_style") or "").strip(),
+                drivetrain=str(payload.get("drivetrain") or "").strip(),
+                engine=str(payload.get("engine") or "").strip(),
+                transmission=str(payload.get("transmission") or "").strip(),
+                fuel_type=str(payload.get("fuel_type") or "").strip(),
+                exterior_color=str(payload.get("exterior_color") or "").strip(),
+                mileage=self._payload_to_int(payload.get("mileage")),
+                price=self._payload_to_float(payload.get("price")),
+                seller_type=str(payload.get("seller_type") or "").strip(),
+                location=payload.get("location") if isinstance(payload.get("location"), dict) else {},
+                vin=str(payload.get("vin") or "").strip().upper(),
+                title_status=str(payload.get("title_status") or "").strip(),
+                condition=str(payload.get("condition") or "").strip(),
+                listing_age_days=self._payload_to_int(payload.get("listing_age_days")),
+                dealer_name=str(payload.get("dealer_name") or "").strip(),
+                image_urls=list(payload.get("image_urls") or []),
+                raw_payload=payload,
+                spec_confidence=float(payload.get("spec_confidence") or 0.0),
+                relevance_score=float(payload.get("relevance_score") or 0.0),
+                match_tier=str(payload.get("match_tier") or "Tier 3"),
+                adjusted_price=self._payload_to_float(payload.get("adjusted_price")),
+                adjustment_notes=list(payload.get("adjustment_notes") or []),
+                exclude_reason=str(payload.get("exclude_reason") or ""),
+                metadata=payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {},
+            )
+        except Exception:
+            return None
+
+    def _payload_to_int(self, value: Any) -> int | None:
+        try:
+            if value in (None, ""):
+                return None
+            return int(float(str(value)))
+        except Exception:
+            return None
+
+    def _payload_to_float(self, value: Any) -> float | None:
+        try:
+            if value in (None, ""):
+                return None
+            return float(str(value).replace("$", "").replace(",", ""))
+        except Exception:
+            return None
 
     def _evaluate_single_vehicle_job(
         self,
@@ -1360,7 +1511,7 @@ class VehicleCompsEngine:
             "listed_price": listed_price_text,
             "market_value": overall.get("market_value", ""),
             "craigslist_average": result.get("craigslist_average", ""),
-            "kelly_blue_book_adjuster": overall.get("kelly_blue_book_adjuster", ""),
+            "full_price_range": overall.get("full_price_range", ""),
             "safe_buy_value": overall.get("safe_buy_value", ""),
             "expected_resale_value": overall.get("expected_resale_value", "") or resale_range.get("low", ""),
             "estimated_profit": overall.get("estimated_profit", "") or result.get("gross_spread_estimate", ""),
@@ -1677,12 +1828,7 @@ class VehicleCompsEngine:
         result["safe_buy_value"] = money(safe_buy_value)
         result["expected_resale_value"] = money(expected_resale_value)
         result["estimated_profit"] = money(estimated_profit)
-        kbb_adjuster = self._build_kbb_adjuster(
-            market_value,
-            target_mileage if target_mileage is not None else self._target_mileage_from_listings(listings),
-            listings,
-        )
-        result["kelly_blue_book_adjuster"] = kbb_adjuster["value"]
+        result["full_price_range"] = self._build_full_price_range(listings)
         if imperfect_title_value:
             result["imperfect_title_value"] = imperfect_title_value
         if ranges:
@@ -2037,6 +2183,16 @@ class VehicleCompsEngine:
             }
         return rebuilt
 
+    def _build_full_price_range(self, listings: list[NormalizedListing]) -> str:
+        prices = [
+            self._listing_market_price(listing)
+            for listing in listings
+            if self._listing_market_price(listing) is not None
+        ]
+        if not prices:
+            return ""
+        return f"{money(min(prices))} - {money(max(prices))}"
+
     def _serialize_sample_listings(self, listings: list[NormalizedListing]) -> list[dict[str, str]]:
         return [
             {
@@ -2052,9 +2208,13 @@ class VehicleCompsEngine:
                 "miles": f"{listing.mileage:,} mi" if listing.mileage is not None else "",
                 "trim": listing.trim,
                 "dealer": listing.source_label,
+                "location_label": ", ".join(
+                    part for part in [listing.location_city, listing.location_state] if part
+                ) or listing.location_zip,
                 "source_url": listing.url,
                 "url": listing.url,
                 "image_urls": listing.image_urls,
+                "mileage": listing.mileage,
             }
             for listing in listings
         ]

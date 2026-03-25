@@ -91,6 +91,7 @@
         <a class="site-menu-link" href="{{ url_for('admin_overview_page') }}">Engine Overview</a>
         <a class="site-menu-link" href="{{ url_for('admin_clients_page') }}">Client Dashboard</a>
       {% endif %}
+      <a class="site-menu-link" href="{{ url_for('download_software') }}">Download Software</a>
       <a class="site-menu-link" href="{{ url_for('logout') }}">Log Out</a>
     {% else %}
       <a class="site-menu-link" href="{{ url_for('login') }}">Log In</a>

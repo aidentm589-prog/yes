@@ -197,7 +197,7 @@
           <section class="choice-shell hidden-panel" id="personal-model-shell">
             <div class="choice-shell-head">
               <span class="input-label-text">Personal Value Model</span>
-              <small>Seller-facing value built from the closest mileage comps in the current market.</small>
+              <small>SELECT YOUR MODEL</small>
             </div>
             <div class="choice-grid engine-choice-grid">
               <button class="choice-card engine-choice-card" type="button" data-choice-group="personal-model" data-value="beta_v1">
@@ -243,17 +243,30 @@
       </section>
 
       <section class="panel loading-panel hidden-panel" id="loading-panel" aria-live="polite">
-        <div class="loading-orbital">
-          <span></span>
-          <span></span>
-          <span></span>
+        <div class="loading-shell">
+          <div class="loading-orbital">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <p id="loading-kicker" class="deal-kicker loading-kicker">Evaluating the batch</p>
+          <h2 id="loading-title">Building comps and pricing</h2>
+          <p id="loading-message" class="loading-copy">
+            Building comps, checking pricing, and calculating your potential deal.
+          </p>
+          <div class="loading-progress-wrap" aria-hidden="true">
+            <div class="loading-progress-bar">
+              <span id="loading-progress-fill" class="loading-progress-fill"></span>
+            </div>
+            <p id="loading-progress" class="loading-progress">0%</p>
+          </div>
+          <div id="loading-phase-pills" class="loading-phase-pills">
+            <span class="loading-phase-pill is-active">Scraping comps</span>
+            <span class="loading-phase-pill">Normalizing data</span>
+            <span class="loading-phase-pill">Scoring value</span>
+            <span class="loading-phase-pill">Finalizing result</span>
+          </div>
         </div>
-        <p id="loading-kicker" class="deal-kicker loading-kicker">Evaluating the batch</p>
-        <h2 id="loading-title">Building comps and pricing</h2>
-        <p id="loading-message" class="loading-copy">
-          Building comps, checking pricing, and calculating your potential deal.
-        </p>
-        <p id="loading-progress" class="loading-progress">Approximately 0%</p>
       </section>
 
       <section class="panel status-panel hidden-panel" id="results-status-panel">
@@ -296,6 +309,15 @@
         </article>
       </section>
 
+      <section class="panel hidden-panel" id="closest-mileage-panel">
+        <div class="results-head">
+          <strong>10 Closest-Mileage Comps</strong>
+        </div>
+        <div id="closest-mileage-summary" class="closest-mileage-summary muted">
+          Closest-mileage comp detail will appear here after a Personal Value evaluation.
+        </div>
+      </section>
+
       <section class="panel hidden-panel" id="results-title-impact-panel">
         <div class="results-head">
           <strong>Title Impact</strong>
@@ -321,6 +343,12 @@
         <div id="comps-toolbar" class="comps-toolbar hidden-panel">
           <span id="comps-count-label" class="muted">Showing 0 of 0 comps</span>
           <div class="comps-toolbar-actions">
+            <label class="sort-select-wrap">
+              <span>Source</span>
+              <select id="comp-source-select">
+                <option value="" selected>All Sources</option>
+              </select>
+            </label>
             <label class="sort-select-wrap">
               <span>Sort</span>
               <select id="comp-sort-select">
@@ -397,17 +425,22 @@
       </section>
 
       <section class="deal-transition panel hidden-panel" id="deal-transition-panel">
-        <div class="deal-transition-action dual-actions">
-          <button id="favorite-from-main" type="button" class="proceed-button heart-proceed-button" aria-label="Save this evaluation">
-            <span aria-hidden="true">♥</span>
-            <span>Save to Portfolio</span>
-          </button>
-          <a id="full-evaluation-link" class="proceed-button" href="{{ url_for('full_evaluation') }}">
-            See If This Is a Good Buy &rarr;
+        <div class="deal-transition-action">
+          <div class="dual-actions">
+            <button id="favorite-from-main" type="button" class="proceed-button heart-proceed-button" aria-label="Save this evaluation">
+              <span aria-hidden="true">♥</span>
+              <span>Save to Portfolio</span>
+            </button>
+            <a id="full-evaluation-link" class="proceed-button" href="{{ url_for('full_evaluation') }}">
+              See If This Is a Good Buy &rarr;
+            </a>
+            <button id="see-potential-upgrades-button" type="button" class="proceed-button hidden-panel">
+              See Potential Upgrades
+            </button>
+          </div>
+          <a class="proceed-button secondary analyze-more-button" href="{{ url_for('index') }}">
+            Analyze More Cars
           </a>
-          <button id="see-potential-upgrades-button" type="button" class="proceed-button hidden-panel">
-            See Potential Upgrades
-          </button>
         </div>
         <div id="main-favorite-status" class="muted"></div>
       </section>

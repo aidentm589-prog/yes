@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#101927"/>
+      <stop offset="100%" stop-color="#0b1320"/>
+    </linearGradient>
+    <linearGradient id="car" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#52d4ff"/>
+      <stop offset="55%" stop-color="#2cb9ff"/>
+      <stop offset="100%" stop-color="#f7fbff"/>
+    </linearGradient>
+    <linearGradient id="drive" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5ad7ff"/>
+      <stop offset="100%" stop-color="#18a8ff"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="220" fill="url(#bg)"/>
+
+  <g transform="translate(110 170)">
+    <path d="M106 271c135-9 220-18 300-54 67-30 116-44 182-44 95 0 171 27 229 79-81-14-152-13-213 7-49 16-96 43-159 102-65 61-134 93-246 100 38-27 63-68 81-111-64 23-149 31-284 25 49-9 80-25 110-50z" fill="url(#car)" opacity=".95"/>
+    <path d="M150 257c92-4 170-7 231-24 56-15 91-48 150-86 55-36 123-57 210-57 106 0 190 29 255 88-89-19-168-18-236 2-60 18-107 47-182 114-73 66-163 101-322 104 57-23 100-71 126-141-74 19-156 25-232 18z" fill="url(#car)"/>
+    <path d="M0 278h254l-69 28H0Zm22 57h211l-60 24H22Zm0 54h180l-45 19H22Z" fill="url(#drive)" opacity=".9"/>
+    <path d="M246 451c0-56 45-101 101-101s101 45 101 101" fill="none" stroke="#2cb9ff" stroke-width="18" stroke-linecap="round"/>
+    <path d="M703 451c0-56 45-101 101-101s101 45 101 101" fill="none" stroke="#2cb9ff" stroke-width="18" stroke-linecap="round"/>
+    <path d="M522 402c71 28 153 38 262 33" fill="none" stroke="#2cb9ff" stroke-width="14" stroke-linecap="round" opacity=".85"/>
+    <path d="M596 229h63c24 0 44 13 57 31-49-1-86 1-120 7-4-17-4-27 0-38z" fill="url(#car)"/>
+  </g>
+
+  <g transform="translate(150 670)">
+    <text x="0" y="0" font-family="Manrope, Arial, sans-serif" font-weight="800" font-size="120" fill="url(#drive)" font-style="italic">Drive</text>
+    <text x="318" y="0" font-family="Manrope, Arial, sans-serif" font-weight="500" font-size="118" fill="#f7f6f7" font-style="italic">and</text>
+    <text x="530" y="0" font-family="Manrope, Arial, sans-serif" font-weight="800" font-size="120" fill="#f7f6f7">Comp</text>
+  </g>
+</svg>

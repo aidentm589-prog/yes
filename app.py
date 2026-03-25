@@ -213,6 +213,15 @@ def credits():
     return render_template("credits.html", credit_packages=credit_packages)
 
 
+@app.get("/download-software")
+def download_software():
+    return render_template(
+        "download_software.html",
+        mac_download_url=url_for("static", filename="downloads/drive-and-comp-mac-native.zip"),
+        windows_download_url=url_for("static", filename="downloads/drive-and-comp-windows.zip"),
+    )
+
+
 @app.get("/full-evaluation")
 @login_required
 def full_evaluation():

@@ -32,15 +32,20 @@ const mileageBandSelect = document.getElementById("mileage-band-select");
 const mileageBandOutput = document.getElementById("mileage-band-output");
 const overallRange = document.getElementById("overall-range");
 const personalValueCards = document.getElementById("personal-value-cards");
+const closestMileagePanel = document.getElementById("closest-mileage-panel");
+const closestMileageSummary = document.getElementById("closest-mileage-summary");
 const sampleListings = document.getElementById("sample-listings");
 const compsToolbar = document.getElementById("comps-toolbar");
 const compsCountLabel = document.getElementById("comps-count-label");
 const showAllCompsButton = document.getElementById("show-all-comps");
+const compSourceSelect = document.getElementById("comp-source-select");
 const fullEvaluationLink = document.getElementById("full-evaluation-link");
 const loadingPanel = document.getElementById("loading-panel");
 const loadingMessage = document.getElementById("loading-message");
 const loadingTitle = document.getElementById("loading-title");
 const loadingKicker = document.getElementById("loading-kicker");
+const loadingProgressFill = document.getElementById("loading-progress-fill");
+const loadingPhasePills = document.getElementById("loading-phase-pills");
 const resultsStatusPanel = document.getElementById("results-status-panel");
 const resultsGrid = document.getElementById("results-grid");
 const resultsTitleImpactPanel = document.getElementById("results-title-impact-panel");
@@ -79,6 +84,7 @@ const topbarTierLabel = document.getElementById("topbar-tier-label");
 const topbarTierDefault = document.getElementById("topbar-tier-default");
 const topbarTierHover = document.getElementById("topbar-tier-hover");
 const DEFAULT_VISIBLE_COMPS = 6;
+const PERSONAL_VISIBLE_COMPS = 10;
 const EVALUATION_CACHE_KEY = "car-flip-analyzer:latest-evaluation";
 
 let currentComparableListings = [];
@@ -89,13 +95,59 @@ let currentUpgradePayload = null;
 let loadingProgressTimer = null;
 let loadingProgressValue = 0;
 let currentCompSort = "closest_mileage";
+let currentCompSource = "";
 let loadingMessageTimer = null;
-const loadingPhases = [
-  "Scraping comps from live sources",
-  "Normalizing listings and filtering noise",
-  "Comparing mileage and trim alignment",
-  "Analyzing numbers and shaping the deal",
-];
+let currentLoadingPlan = null;
+const LOADING_PLANS = {
+  zippy: {
+    cap: 94,
+    stepMs: 520,
+    kicker: "Fast Lane Active",
+    title: "Running Zippy",
+    phases: [
+      { label: "Scraping comps", detail: "Pulling fast market comps from the live source basket.", until: 28 },
+      { label: "Cleaning results", detail: "Removing weak listings and normalizing the good ones.", until: 56 },
+      { label: "Averaging prices", detail: "Calculating the fast market averages and buy values.", until: 80 },
+      { label: "Packaging result", detail: "Formatting the quick answer and comp set.", until: 94 },
+    ],
+  },
+  personal: {
+    cap: 96,
+    stepMs: 640,
+    kicker: "Personal Value Engine",
+    title: "Valuing Your Car",
+    phases: [
+      { label: "Gathering comps", detail: "Searching the market for cars closest to your mileage and trim.", until: 24 },
+      { label: "Matching mileage", detail: "Ranking the closest-mileage comps that best frame your sale value.", until: 52 },
+      { label: "Building value", detail: "Calculating your likely sale value from the strongest comparable set.", until: 78 },
+      { label: "Preparing insights", detail: "Finalizing the summary, stats, and upgrade view.", until: 96 },
+    ],
+  },
+  individual: {
+    cap: 96,
+    stepMs: 680,
+    kicker: "Deep Evaluation Engine",
+    title: "Building the Deal",
+    phases: [
+      { label: "Scraping comps", detail: "Pulling live comps across the active source basket.", until: 22 },
+      { label: "Matching vehicle", detail: "Checking trim, mileage, title, and drivetrain alignment.", until: 48 },
+      { label: "Scoring numbers", detail: "Calculating market value, resale, and safe-buy logic.", until: 74 },
+      { label: "Finishing report", detail: "Preparing the deal math and optional detailed summary.", until: 96 },
+    ],
+  },
+  bulk: {
+    cap: 97,
+    stepMs: 700,
+    kicker: "Batch Evaluation Engine",
+    title: "Evaluating the Batch",
+    phases: [
+      { label: "Parsing entries", detail: "Breaking the batch into individual vehicles.", until: 16 },
+      { label: "Running comps", detail: "Evaluating each car and pulling the strongest comps.", until: 44 },
+      { label: "Ranking deals", detail: "Sorting the batch by market strength and opportunity.", until: 76 },
+      { label: "Packaging batch", detail: "Preparing the ranked list and summary cards.", until: 97 },
+    ],
+  },
+};
 
 const STAT_HELP = {
   year: "The model year the engine parsed or normalized from your input, link, VIN, or listing data.",
@@ -116,8 +168,11 @@ const STAT_HELP = {
   condition_range: "The overall low-to-high pricing span built from the condition sweep and valid market comps.",
   average_price_near_this_mileage: "The average adjusted price from the nearest mileage comps, using only comps within the nearby mileage window.",
   listing_price_vs_avg_near_mileage: "Average price near this mileage minus the listing price, so you can see whether the asking price sits above or below nearby-mileage comps.",
+  estimated_personal_market_value: "The main seller-facing value for your car. It is built from the average listing price of the comparable cars closest to your mileage.",
+  average_price_of_10_closest_mileage_comps: "The average price of the 10 valid comparable cars with mileage closest to your vehicle. This is the main valuation anchor for the Personal Value engine.",
+  comp_count_used: "The number of closest-mileage comparable cars actually used to build your Personal Value result.",
   craigslist_average: "The average adjusted price of the Craigslist-only comps in this run, which tends to lean more private-party than dealer inventory.",
-  kelly_blue_book_adjuster: "A mileage-ranked discount from the market-wide average. Lower-mileage placements receive a lighter cut and higher-mileage placements receive a deeper one.",
+  full_price_range: "The full low-to-high price spread of the valid comparable listings used in this evaluation.",
   clean_title_benchmark: "The clean-title anchor value before any title-damage reduction is applied.",
   clean_title_range: "The expected clean-title value band before rebuilt or reconstructed title adjustments.",
   rebuilt_title_range: "The projected value band after applying title-damage reductions to the clean-title value.",
@@ -146,8 +201,11 @@ const HELP_ENABLED_KEYS = new Set([
   "condition_range",
   "average_price_near_this_mileage",
   "listing_price_vs_avg_near_mileage",
+  "estimated_personal_market_value",
+  "average_price_of_10_closest_mileage_comps",
+  "comp_count_used",
   "craigslist_average",
-  "kelly_blue_book_adjuster",
+  "full_price_range",
   "clean_title_benchmark",
   "clean_title_range",
   "rebuilt_title_range",
@@ -331,6 +389,7 @@ function setResultsVisible(visible) {
     resultsCompsPanel,
     resultsConditionsPanel,
     resultsDetailedReportPanel,
+    closestMileagePanel,
     personalUpgradesPanel,
     dealTransitionPanel,
   ].forEach((element) => {
@@ -353,6 +412,7 @@ function hideAllResultPanels() {
   setResultsVisible(false);
   setBulkResultsVisible(false);
   seePotentialUpgradesButton?.classList.add("hidden-panel");
+  personalUpgradesPanel?.classList.add("hidden-panel");
   personalUpgradesControls?.classList.add("hidden-panel");
   if (personalUpgradesGrid) {
     personalUpgradesGrid.classList.add("muted");
@@ -371,6 +431,9 @@ function showStatusOnly(message, badge = "Needs Data") {
   resultsDetailedReportPanel?.classList.add("hidden-panel");
   bulkResultsPanel?.classList.add("hidden-panel");
   dealTransitionPanel?.classList.add("hidden-panel");
+  personalUpgradesPanel?.classList.add("hidden-panel");
+  personalUpgradesControls?.classList.add("hidden-panel");
+  seePotentialUpgradesButton?.classList.add("hidden-panel");
   sessionBadge.textContent = badge;
   statusMessage.textContent = message;
 }
@@ -388,6 +451,10 @@ function selectedEvaluationMode() {
     return personalEvaluationModeSelect?.value || "";
   }
   return evaluationModeSelect?.value || "";
+}
+
+function defaultVisibleCompCount() {
+  return selectedEvaluationEngine() === "personal" ? PERSONAL_VISIBLE_COMPS : DEFAULT_VISIBLE_COMPS;
 }
 
 function setChoiceCardSelection(groupName, value) {
@@ -565,6 +632,43 @@ function setLoadingVisible(visible, message = "", title = "", kicker = "") {
   }
 }
 
+function setLoadingProgressState(progress, phaseIndex) {
+  const progressLabel = document.getElementById("loading-progress");
+  const normalized = Math.max(0, Math.min(100, Math.round(progress)));
+  if (progressLabel) {
+    progressLabel.textContent = `${normalized}%`;
+  }
+  if (loadingProgressFill) {
+    loadingProgressFill.style.width = `${normalized}%`;
+  }
+  if (loadingPhasePills) {
+    Array.from(loadingPhasePills.children).forEach((pill, index) => {
+      pill.classList.toggle("is-active", index === phaseIndex);
+      pill.classList.toggle("is-complete", index < phaseIndex);
+    });
+  }
+}
+
+function configureLoadingPlan(planKey, message = "", title = "", kicker = "") {
+  const plan = LOADING_PLANS[planKey] || LOADING_PLANS.individual;
+  currentLoadingPlan = plan;
+  if (loadingKicker) {
+    loadingKicker.textContent = kicker || plan.kicker;
+  }
+  if (loadingTitle) {
+    loadingTitle.textContent = title || plan.title;
+  }
+  if (loadingMessage) {
+    loadingMessage.textContent = message || plan.phases[0].detail;
+  }
+  if (loadingPhasePills) {
+    loadingPhasePills.innerHTML = plan.phases
+      .map((phase, index) => `<span class="loading-phase-pill ${index === 0 ? "is-active" : ""}">${escapeHtml(phase.label)}</span>`)
+      .join("");
+  }
+  setLoadingProgressState(0, 0);
+}
+
 function animatePortfolioSaveCue() {
   favoriteFromMain?.classList.add("is-saved");
   stickyPortfolioButton?.classList.add("portfolio-bump");
@@ -705,13 +809,49 @@ function renderVehicleBrief(details, fallback) {
   sourceSummary.classList.remove("muted");
   const referenceVehicle = extractReferenceVehicleMedia(currentMainEvaluation);
   const vinRefinementNote = details?.vin_decoded_used
-    ? `<div class="vehicle-vin-note">Vehicle details refined using VIN decode.</div>`
+    ? renderVinDecodeInsight(details)
     : "";
   sourceSummary.innerHTML = `
     <div class="vehicle-brief">
       ${rows.join("")}
       ${vinRefinementNote}
       ${renderReferenceVehicleCard(referenceVehicle)}
+    </div>
+  `;
+}
+
+function renderVinDecodeInsight(details) {
+  const vinData = details?.vin_decode_data || {};
+  const vinSummary = details?.vin_decode_summary || {};
+  const highlights = Array.isArray(vinSummary?.highlights) ? vinSummary.highlights.filter(Boolean) : [];
+  const specRows = [
+    ["Body", vinData.body_style],
+    ["Drive", vinData.drivetrain],
+    ["Engine", vinData.engine],
+    ["Transmission", vinData.transmission],
+    ["Fuel", vinData.fuel_type],
+    ["HP", vinData.engine_hp ? `${vinData.engine_hp} hp` : ""],
+  ].filter(([, value]) => value);
+
+  return `
+    <div class="vehicle-vin-note vehicle-vin-insight">
+      <div class="vehicle-vin-kicker">NHTSA VIN Decode</div>
+      <div class="vehicle-vin-summary">${escapeHtml(vinSummary.summary || "Vehicle details refined using VIN decode.")}</div>
+      ${highlights.length ? `
+        <div class="vehicle-vin-highlights">
+          ${highlights.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+        </div>
+      ` : ""}
+      ${specRows.length ? `
+        <div class="vehicle-vin-grid">
+          ${specRows.map(([label, value]) => `
+            <div class="vehicle-vin-spec">
+              <span>${escapeHtml(label)}</span>
+              <strong>${escapeHtml(String(value))}</strong>
+            </div>
+          `).join("")}
+        </div>
+      ` : ""}
     </div>
   `;
 }
@@ -1125,7 +1265,7 @@ function renderPersonalValueCards(personal = {}) {
     ["10 Closest-Mileage Average", personal.average_price_of_10_closest_mileage_comps || ""],
     ["Comp Count Used", personal.comp_count_used ? String(personal.comp_count_used) : ""],
     ["Craigslist Average", personal.craigslist_average || ""],
-    ["Kelly Blue Book Adjuster", personal.kelly_blue_book_adjuster || ""],
+    ["Full Price Range", personal.full_price_range || ""],
     ["Clean Title Benchmark", personal.clean_title_benchmark || ""],
   ].filter(([, value]) => value);
 
@@ -1136,12 +1276,67 @@ function renderPersonalValueCards(personal = {}) {
   }
 
   personalValueCards.classList.remove("hidden-panel");
+  const helpKeys = {
+    "Estimated Personal Market Value": "estimated_personal_market_value",
+    "10 Closest-Mileage Average": "average_price_of_10_closest_mileage_comps",
+    "Comp Count Used": "comp_count_used",
+    "Craigslist Average": "craigslist_average",
+    "Full Price Range": "full_price_range",
+    "Clean Title Benchmark": "clean_title_benchmark",
+  };
   personalValueCards.innerHTML = cards.map(([label, value]) => `
     <article class="personal-value-card">
-      <span>${escapeHtml(label)}</span>
+      <span>${renderLabelWithHelp(label, helpKeys[label] || "")}</span>
       <strong>${escapeHtml(value)}</strong>
     </article>
   `).join("");
+}
+
+function renderClosestMileageSummary(resultBody) {
+  if (!closestMileagePanel || !closestMileageSummary) {
+    return;
+  }
+
+  const personal = resultBody?.personal_value || {};
+  const matched = Array.isArray(resultBody?.matched_comps) ? resultBody.matched_comps : [];
+  if (!matched.length) {
+    closestMileagePanel.classList.add("hidden-panel");
+    closestMileageSummary.classList.add("muted");
+    closestMileageSummary.textContent = "Closest-mileage comp detail will appear here after a Personal Value evaluation.";
+    return;
+  }
+
+  const prices = matched.map((item) => parseMoney(item.price)).filter((value) => Number.isFinite(value));
+  const mileages = matched.map((item) => Number(item.mileage)).filter((value) => Number.isFinite(value));
+  const averagePrice = prices.length
+    ? formatMoney(prices.reduce((sum, value) => sum + value, 0) / prices.length)
+    : (personal.average_price_of_10_closest_mileage_comps || "");
+  const lowestPrice = prices.length ? formatMoney(Math.min(...prices)) : "";
+  const highestPrice = prices.length ? formatMoney(Math.max(...prices)) : "";
+  const lowestMileage = mileages.length ? `${Math.min(...mileages).toLocaleString()} mi` : "";
+  const highestMileage = mileages.length ? `${Math.max(...mileages).toLocaleString()} mi` : "";
+
+  const stats = [
+    ["Average Price on 10 Closest Mileage Comps", averagePrice],
+    ["Closest Comps Used", personal.comp_count_used ? String(personal.comp_count_used) : String(matched.length)],
+    ["Lowest Closest-Comp Price", lowestPrice],
+    ["Highest Closest-Comp Price", highestPrice],
+    ["Lowest Closest-Comp Mileage", lowestMileage],
+    ["Highest Closest-Comp Mileage", highestMileage],
+  ].filter(([, value]) => value);
+
+  closestMileagePanel.classList.remove("hidden-panel");
+  closestMileageSummary.classList.remove("muted");
+  closestMileageSummary.innerHTML = `
+    <div class="closest-mileage-cards">
+      ${stats.map(([label, value]) => `
+        <article class="closest-mileage-card">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(value)}</strong>
+        </article>
+      `).join("")}
+    </div>
+  `;
 }
 
 function renderPersonalValueResult(resultBody) {
@@ -1155,11 +1350,20 @@ function renderPersonalValueResult(resultBody) {
   renderConditionValues(null);
   renderMileagePriceBands(resultBody.mileage_price_bands || []);
   renderPersonalValueCards(personal);
+  renderClosestMileageSummary(resultBody);
   if (mileagePriceBands) {
     mileagePriceBands.classList.remove("hidden-panel");
   }
-  overallRange?.classList.add("hidden-panel");
-  renderOverallRange(null);
+  overallRange?.classList.remove("hidden-panel");
+  const allSourcesRange = Object.fromEntries(
+    Object.entries({
+      clean_title_benchmark: personal.clean_title_benchmark || "",
+      craigslist_average: personal.craigslist_average || "",
+      full_price_range: personal.full_price_range || "",
+      all_sources_comp_count: resultBody.comparable_count ? String(resultBody.comparable_count) : "",
+    }).filter(([, value]) => value)
+  );
+  renderOverallRange(allSourcesRange);
   renderAveragePriceNearMileage(null);
   renderMileagePriceDelta(null, null);
   renderTitleImpact(null);
@@ -1340,7 +1544,7 @@ function renderBulkResults(items = []) {
       ["Listed Price", item.listed_price || ""],
       ["Market Value", item.market_value || ""],
       ["Craigslist Average", item.craigslist_average || ""],
-      ["Kelly Blue Book Adjuster", item.kelly_blue_book_adjuster || ""],
+      ["Full Price Range", item.full_price_range || ""],
       ["Safe Buy Value", item.safe_buy_value || ""],
       ["Expected Resale", item.expected_resale_value || ""],
       ["Estimated Profit", item.estimated_profit || ""],
@@ -1432,7 +1636,7 @@ function updateCompsToolbar(totalCount, visibleCount) {
   compsToolbar.classList.remove("hidden-panel");
   compsCountLabel.textContent = `Showing ${visibleCount} of ${totalCount} comps`;
 
-  if (totalCount <= DEFAULT_VISIBLE_COMPS) {
+  if (totalCount <= defaultVisibleCompCount()) {
     showAllCompsButton.classList.add("hidden-panel");
     return;
   }
@@ -1443,6 +1647,30 @@ function updateCompsToolbar(totalCount, visibleCount) {
     : `Show All ${totalCount} Comps`;
 }
 
+function updateCompSourceFilter(listings) {
+  if (!compSourceSelect) {
+    return;
+  }
+  const sources = Array.from(
+    new Set(
+      (listings || [])
+        .map((item) => String(item.dealer || "").trim())
+        .filter(Boolean)
+    )
+  ).sort((left, right) => left.localeCompare(right));
+  const selectedValue = currentCompSource;
+  compSourceSelect.innerHTML = [
+    `<option value="">All Sources</option>`,
+    ...sources.map((source) => `<option value="${escapeHtml(source)}">${escapeHtml(source)}</option>`),
+  ].join("");
+  if (selectedValue && sources.includes(selectedValue)) {
+    compSourceSelect.value = selectedValue;
+  } else {
+    currentCompSource = "";
+    compSourceSelect.value = "";
+  }
+}
+
 function renderSampleListings(listings) {
   if (!listings || listings.length === 0) {
     sampleListings.textContent = "No comparable listings were returned.";
@@ -1451,8 +1679,13 @@ function renderSampleListings(listings) {
     return;
   }
 
+  updateCompSourceFilter(listings);
+  const filteredListings = currentCompSource
+    ? listings.filter((item) => String(item.dealer || "").trim() === currentCompSource)
+    : listings;
+
   const targetMileage = Number(currentMainEvaluation?.parsed_details?.mileage || 0) || null;
-  const sortedListings = [...listings].sort((left, right) => {
+  const sortedListings = [...filteredListings].sort((left, right) => {
     if (currentCompSort === "price_low") {
       return (parseMoney(left.price) || Number.MAX_SAFE_INTEGER) - (parseMoney(right.price) || Number.MAX_SAFE_INTEGER);
     }
@@ -1487,7 +1720,7 @@ function renderSampleListings(listings) {
 
   const visibleListings = showingAllComparableListings
     ? sortedListings
-    : sortedListings.slice(0, DEFAULT_VISIBLE_COMPS);
+    : sortedListings.slice(0, defaultVisibleCompCount());
 
   sampleListings.classList.remove("muted");
   sampleListings.innerHTML = visibleListings
@@ -1567,7 +1800,7 @@ function renderSampleListings(listings) {
     })
     .join("");
 
-  updateCompsToolbar(listings.length, visibleListings.length);
+  updateCompsToolbar(filteredListings.length, visibleListings.length);
 }
 
 function setComparableListings(sample = [], matched = []) {
@@ -1712,26 +1945,30 @@ function buildStatusMessage(result) {
 function buildNotes(result) {
   const diagnostics = Array.isArray(result.body?.source_health) ? result.body.source_health : [];
   return diagnostics
-    .filter((item) => item?.enabled)
+    .filter((item) => {
+      if (!item?.enabled) {
+        return false;
+      }
+      const key = String(item.key || "").trim().toLowerCase();
+      const label = String(item.label || "").trim().toLowerCase();
+      if (["custom_source", "manual_import"].includes(key) || ["custom source", "manual import"].includes(label)) {
+        return false;
+      }
+      const normalizedCount = Number(item.normalized_count || item.count || 0);
+      return normalizedCount > 0;
+    })
     .map((item) => {
       const normalizedCount = Number(item.normalized_count || item.count || 0);
-      const rawCount = Number(item.raw_count || 0);
-      const status = item.status || "unknown";
-      const parts = [
-        `${item.label || item.key}: ${status}`,
-        `raw ${rawCount}`,
-        `normalized ${normalizedCount}`,
-      ];
-      if (item.message) {
-        parts.push(item.message);
-      }
-      return parts.join(" • ");
+      return `${item.label || item.key}: ${normalizedCount} comps`;
     });
 }
 
 function renderZippyResult(resultBody) {
   setResultsVisible(true);
   personalValueCards?.classList.add("hidden-panel");
+  personalUpgradesPanel?.classList.add("hidden-panel");
+  personalUpgradesControls?.classList.add("hidden-panel");
+  seePotentialUpgradesButton?.classList.add("hidden-panel");
   overallRange?.classList.remove("hidden-panel");
   mileagePriceBands?.classList.remove("hidden-panel");
   resultsConditionsPanel?.classList.add("hidden-panel");
@@ -1747,7 +1984,7 @@ function renderZippyResult(resultBody) {
     average_price_of_all_comps: values.average_all_comps || "",
     average_price_of_20_closest_mileage_comps: values.average_20_closest_mileage_comps || values.average_all_comps || "",
     craigslist_average: resultBody.craigslist_average || values.craigslist_average || "",
-    kelly_blue_book_adjuster: values.kelly_blue_book_adjuster || "",
+    full_price_range: values.full_price_range || "",
     very_poor_buy_price: values.very_poor_buy_price || "",
     good_buy_price: values.good_buy_price || "",
     excellent_buy_price: values.excellent_buy_price || "",
@@ -1797,14 +2034,12 @@ function cleanVehicleTitle(parsedDetails = {}, fallback = "") {
 }
 
 function startLoadingProgress() {
-  const progressLabel = document.getElementById("loading-progress");
-  loadingProgressValue = 6;
+  const plan = currentLoadingPlan || LOADING_PLANS.individual;
+  loadingProgressValue = 4;
   let phaseIndex = 0;
-  if (progressLabel) {
-    progressLabel.textContent = `Approximately ${loadingProgressValue}%`;
-  }
+  setLoadingProgressState(loadingProgressValue, phaseIndex);
   if (loadingMessage) {
-    loadingMessage.textContent = loadingPhases[0];
+    loadingMessage.textContent = plan.phases[0].detail;
   }
   if (loadingProgressTimer) {
     window.clearInterval(loadingProgressTimer);
@@ -1813,21 +2048,21 @@ function startLoadingProgress() {
     window.clearInterval(loadingMessageTimer);
   }
   loadingProgressTimer = window.setInterval(() => {
-    loadingProgressValue = Math.min(92, loadingProgressValue + (loadingProgressValue < 40 ? 9 : loadingProgressValue < 70 ? 5 : 2));
-    if (progressLabel) {
-      progressLabel.textContent = `Approximately ${loadingProgressValue}%`;
+    const currentPhase = plan.phases[phaseIndex] || plan.phases[plan.phases.length - 1];
+    const target = currentPhase?.until ?? plan.cap;
+    const delta = Math.max(1, Math.ceil((target - loadingProgressValue) / 5));
+    loadingProgressValue = Math.min(plan.cap, loadingProgressValue + delta);
+    while (phaseIndex < plan.phases.length - 1 && loadingProgressValue >= plan.phases[phaseIndex].until) {
+      phaseIndex += 1;
     }
-  }, 650);
-  loadingMessageTimer = window.setInterval(() => {
-    phaseIndex = (phaseIndex + 1) % loadingPhases.length;
     if (loadingMessage) {
-      loadingMessage.textContent = loadingPhases[phaseIndex];
+      loadingMessage.textContent = plan.phases[phaseIndex]?.detail || currentPhase.detail;
     }
-  }, 1500);
+    setLoadingProgressState(loadingProgressValue, phaseIndex);
+  }, plan.stepMs);
 }
 
 function stopLoadingProgress() {
-  const progressLabel = document.getElementById("loading-progress");
   if (loadingProgressTimer) {
     window.clearInterval(loadingProgressTimer);
     loadingProgressTimer = null;
@@ -1836,9 +2071,7 @@ function stopLoadingProgress() {
     window.clearInterval(loadingMessageTimer);
     loadingMessageTimer = null;
   }
-  if (progressLabel) {
-    progressLabel.textContent = "Approximately 100%";
-  }
+  setLoadingProgressState(100, currentLoadingPlan ? currentLoadingPlan.phases.length - 1 : 0);
 }
 
 function initBillingToggle() {
@@ -2030,18 +2263,20 @@ form?.addEventListener("submit", async (event) => {
   const submitButton = form.querySelector('button[type="submit"]');
   submitButton.disabled = true;
   hideAllResultPanels();
-  setLoadingVisible(
-    true,
+  const loadingPlanKey = bulkMode ? "bulk" : personalEngine ? "personal" : zippyMode ? "zippy" : "individual";
+  configureLoadingPlan(
+    loadingPlanKey,
     bulkMode
       ? "Parsing vehicles, evaluating each one, and ranking the best deals in the batch."
       : personalEngine
         ? "Gathering closest-mileage comps and pricing what your car should realistically sell for."
-      : zippyMode
-        ? "Scraping live comps, averaging the market, and generating the fast buy values."
-      : "Building comps, checking pricing, and calculating your potential deal.",
+        : zippyMode
+          ? "Scraping live comps, averaging the market, and generating the fast buy values."
+          : "Building comps, checking pricing, and calculating your potential deal.",
     bulkMode ? "Ranking the strongest deals" : personalEngine ? "Running Personal Value" : zippyMode ? "Running Zippy" : "Building comps and pricing",
     bulkMode ? "Evaluating the batch" : personalEngine ? "Valuing your car" : zippyMode ? "Evaluating the deal" : "Evaluating the deal",
   );
+  setLoadingVisible(true);
   startLoadingProgress();
   sessionBadge.textContent = "Running";
   statusMessage.textContent = bulkMode ? "Running bulk evaluation..." : "Running background valuation...";
@@ -2249,6 +2484,14 @@ document.addEventListener("click", (event) => {
 if (compSortSelect) {
   compSortSelect.addEventListener("change", (event) => {
     currentCompSort = event.target.value || "closest_mileage";
+    renderSampleListings(currentComparableListings);
+  });
+}
+
+if (compSourceSelect) {
+  compSourceSelect.addEventListener("change", (event) => {
+    currentCompSource = event.target.value || "";
+    showingAllComparableListings = false;
     renderSampleListings(currentComparableListings);
   });
 }

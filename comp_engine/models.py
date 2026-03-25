@@ -36,6 +36,8 @@ class VehicleQuery:
     seller_type: str = ""
     vin: str = ""
     vin_decoded_used: bool = False
+    vin_decode_data: dict[str, Any] = field(default_factory=dict)
+    vin_decode_summary: dict[str, Any] = field(default_factory=dict)
     latitude: float | None = None
     longitude: float | None = None
     manual_csv: str = ""

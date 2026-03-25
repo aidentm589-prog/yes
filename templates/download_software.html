@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Download Software | Car Flip Analyzer</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    {% include "_top_bar.html" %}
+    <main class="shell">
+      <section class="panel credits-hero download-hero">
+        <p class="deal-kicker">Local Software</p>
+        <h1>Download Drive and Comp</h1>
+        <p class="full-evaluation-copy">
+          Run the software locally on your own machine. The app launches a local server, opens in your browser, and keeps the same experience as the web version.
+        </p>
+      </section>
+
+      <section class="choice-grid credits-grid download-grid">
+        <article class="choice-card credit-package-card download-card">
+          <span class="choice-eyebrow">macOS</span>
+          <strong>Download Mac App</strong>
+          <small>Native macOS app bundle. Launch it like software and it opens the full platform locally on your machine.</small>
+          <div class="download-meta">
+            <span>Runs locally</span>
+            <span>Browser-based UI</span>
+            <span>Uses your machine instead of Render</span>
+          </div>
+          <a class="button" href="{{ mac_download_url }}" download>Download Mac App</a>
+        </article>
+
+        <article class="choice-card credit-package-card download-card">
+          <span class="choice-eyebrow">Windows</span>
+          <strong>Download for Windows</strong>
+          <small>Local Windows bundle that runs the platform on your own machine. It does not need the live website once launched.</small>
+          <div class="download-meta">
+            <span>Runs locally</span>
+            <span>Browser-based UI</span>
+            <span>Uses your machine instead of Render</span>
+          </div>
+          <a class="button" href="{{ windows_download_url }}" download>Download Windows Bundle</a>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="results-head">
+          <strong>What To Expect</strong>
+        </div>
+        <div class="range-list">
+          <div class="range-row"><span>1.</span><strong>Download and extract the bundle.</strong></div>
+          <div class="range-row"><span>2.</span><strong>Double-click the launcher file for your platform.</strong></div>
+          <div class="range-row"><span>3.</span><strong>The app installs local runtime dependencies on first launch if needed.</strong></div>
+          <div class="range-row"><span>4.</span><strong>Your browser opens the local software automatically.</strong></div>
+        </div>
+      </section>
+    </main>
+    <script src="{{ url_for('static', filename='nav.js') }}"></script>
+    <script src="{{ url_for('static', filename='software_chat.js') }}"></script>
+  </body>
+</html>

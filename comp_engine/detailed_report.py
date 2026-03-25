@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from .http import HttpClient
+from .llm import LlmClient
 from .models import NormalizedListing, VehicleQuery
 
 
@@ -14,6 +15,7 @@ class DetailedVehicleReportService:
         self.http_client = http_client
         self.api_key = os.getenv("OPENAI_API_KEY", "").strip()
         self.model = os.getenv("OPENAI_DETAILED_REPORT_MODEL", "gpt-5.4-mini").strip()
+        self.llm = LlmClient(http_client)
 
     def should_generate_detailed_vehicle_report(self, payload: dict[str, Any]) -> bool:
         raw = str(payload.get("detailed_vehicle_report") or payload.get("include_detailed_vehicle_report") or "").strip().lower()
@@ -45,7 +47,7 @@ class DetailedVehicleReportService:
     ) -> dict[str, Any]:
         base = self._build_base_report(query, result, listings)
         enriched = {}
-        if self.api_key and query.year and query.make and query.model:
+        if (self.api_key or self.llm.is_ollama_available()) and query.year and query.make and query.model:
             try:
                 enriched = self._generate_llm_report(base)
             except Exception:
@@ -123,16 +125,17 @@ class DetailedVehicleReportService:
         listings: list[NormalizedListing],
     ) -> dict[str, Any]:
         consensus = self._resolve_comp_specs(listings)
-        engine_spec = consensus.get("engine_spec") or query.engine or ""
-        transmission_spec = consensus.get("transmission_spec") or query.transmission or ""
-        drivetrain = consensus.get("drivetrain") or query.drivetrain or ""
-        fuel_type = consensus.get("fuel_type") or query.fuel_type or ""
-        body_style = consensus.get("body_style") or query.body_style or ""
+        engine_spec = query.engine or consensus.get("engine_spec") or ""
+        transmission_spec = query.transmission or consensus.get("transmission_spec") or ""
+        drivetrain = query.drivetrain or consensus.get("drivetrain") or ""
+        fuel_type = query.fuel_type or consensus.get("fuel_type") or ""
+        body_style = query.body_style or consensus.get("body_style") or ""
         base = {
             "year": query.year,
             "make": query.make,
             "model": query.model,
             "trim": query.trim,
+            "vin_decoded_used": bool(query.vin_decoded_used),
             "body_style": body_style,
             "engine_spec": engine_spec,
             "transmission_spec": transmission_spec,
@@ -153,13 +156,24 @@ class DetailedVehicleReportService:
             "sports_car": self.is_sports_car(query, {"engine_spec": engine_spec}),
             "source": consensus.get("source") or "fallback",
             "spec_confidence": consensus.get("spec_confidence", 0.0),
+            "_hard_spec_locks": {
+                "engine_spec": bool(query.engine) or bool(query.vin_decoded_used),
+                "transmission_spec": bool(query.transmission) or bool(query.vin_decoded_used),
+                "drivetrain": bool(query.drivetrain) or bool(query.vin_decoded_used),
+                "fuel_type": bool(query.fuel_type) or bool(query.vin_decoded_used),
+                "body_style": bool(query.body_style) or bool(query.vin_decoded_used),
+                "aspiration": bool(query.engine) or bool(query.vin_decoded_used),
+            },
         }
         return base
 
     def _generate_llm_report(self, base: dict[str, Any]) -> dict[str, Any]:
         prompt = (
             "Return only valid JSON for a used-car vehicle report. "
-            "Use the provided vehicle identity and known facts. "
+            "Use the provided exact vehicle identity and known facts. "
+            "Do not answer from generic make stereotypes when the trim strongly identifies the car. "
+            "If the trim/year/model implies a known drivetrain, forced induction setup, or performance profile, use that exact identity. "
+            "Treat VIN-decoded or query-provided specs as authoritative. "
             "If a field is uncertain, return an empty string. "
             "For common_problems return a short semicolon-separated string, not a list. "
             "For reliability_rating return only Low, Medium, or High. "
@@ -174,19 +188,12 @@ class DetailedVehicleReportService:
             "common_problems, reliability_rating, maintenance_cost_estimate, typical_lifespan_miles, insurance_estimate, "
             "horsepower, torque, zero_to_sixty."
         )
-        status, body, _ = self.http_client.request(
-            "POST",
-            "https://api.openai.com/v1/responses",
-            headers={"Authorization": f"Bearer {self.api_key}"},
-            json_body={"model": self.model, "input": prompt},
+        parsed = self.llm.complete_json(
+            prompt=prompt,
+            openai_model=self.model,
             source_key="detailed_vehicle_report",
             timeout_seconds=30,
         )
-        if status >= 400:
-            raise RuntimeError(body.decode("utf-8", "ignore"))
-        payload = json.loads(body.decode("utf-8"))
-        text = self._extract_response_text(payload)
-        parsed = self._extract_json(text)
         parsed["source"] = "llm"
         return parsed
 
@@ -201,12 +208,14 @@ class DetailedVehicleReportService:
             "mpg",
             "aspiration",
         }
+        hard_spec_locks = base.get("_hard_spec_locks") if isinstance(base.get("_hard_spec_locks"), dict) else {}
         for key, value in enriched.items():
             if value in ("", None, [], {}):
                 continue
-            if key in hard_spec_keys and str(base.get(key) or "").strip() and float(base.get("spec_confidence") or 0.0) >= 0.65:
+            if key in hard_spec_keys and hard_spec_locks.get(key):
                 continue
             merged[key] = value
+        merged.pop("_hard_spec_locks", None)
         merged["sports_car"] = bool(merged.get("sports_car") or self.is_sports_car(
             VehicleQuery(
                 year=merged.get("year"),
@@ -345,13 +354,15 @@ class DetailedVehicleReportService:
             return "Turbocharged"
         if any(token in text for token in ["naturally aspirated", "na "]):
             return "Naturally Aspirated"
-        if engine_spec:
-            return "Naturally Aspirated"
         return ""
 
     def _fallback_reliability(self, query: VehicleQuery) -> str:
         make = str(query.make or "").lower()
+        trim = str(query.trim or "").lower()
+        model = str(query.model or "").lower()
         performance = self.is_sports_car(query)
+        if make == "bmw" and any(token in f"{model} {trim}" for token in ["m340", "m240", "340i", "440i", "540i", "m440", "x3 m40", "x4 m40", "b58"]):
+            return "High"
         if make in {"toyota", "honda", "lexus", "acura", "mazda"} and not performance:
             return "High"
         if make in {"audi", "bmw", "mercedes", "mercedes-benz", "jaguar", "land rover", "mini", "porsche"}:
@@ -389,7 +400,11 @@ class DetailedVehicleReportService:
 
     def _fallback_common_problems(self, query: VehicleQuery, engine_spec: str) -> str:
         make = str(query.make or "").lower()
+        trim = str(query.trim or "").lower()
+        model = str(query.model or "").lower()
         performance = self.is_sports_car(query, {"engine_spec": engine_spec})
+        if make == "bmw" and any(token in f"{model} {trim}" for token in ["m340", "m240", "340i", "440i", "540i", "m440", "x3 m40", "x4 m40", "b58"]):
+            return "Cooling-system wear over time; PCV or oil-filter-housing leaks; suspension bushings and routine performance-tire/brake wear"
         if make in {"audi", "bmw", "mercedes", "mercedes-benz"}:
             return "Oil leaks; cooling-system wear; suspension or electronics issues"
         if make in {"mini"}:

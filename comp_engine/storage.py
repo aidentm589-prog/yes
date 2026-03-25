@@ -232,6 +232,65 @@ class SQLiteRepository:
                 )
             connection.commit()
 
+    def get_upgrade_candidate_payloads(
+        self,
+        *,
+        min_price: float,
+        max_price: float,
+        body_variants: list[str],
+        state: str = "",
+        exclude_make: str = "",
+        exclude_model: str = "",
+        limit: int = 160,
+    ) -> list[dict[str, Any]]:
+        body_variants = [str(item or "").strip().lower() for item in body_variants if str(item or "").strip()]
+        params: list[Any] = [min_price, max_price]
+        clauses = [
+            "cast(json_extract(payload, '$.price') as real) between ? and ?",
+            "json_extract(payload, '$.year') is not null",
+            "json_extract(payload, '$.make') is not null",
+            "json_extract(payload, '$.model') is not null",
+        ]
+        if body_variants:
+            body_clauses = []
+            for variant in body_variants:
+                body_clauses.append("lower(coalesce(json_extract(payload, '$.body_style'), '')) like ?")
+                params.append(f"%{variant}%")
+            clauses.append(f"({' or '.join(body_clauses)})")
+        if state:
+            clauses.append("upper(coalesce(json_extract(payload, '$.location.state'), '')) = ?")
+            params.append(state.upper())
+        if exclude_make and exclude_model:
+            clauses.append(
+                "not (lower(coalesce(json_extract(payload, '$.make'), '')) = ? and lower(coalesce(json_extract(payload, '$.model'), '')) = ?)"
+            )
+            params.extend([exclude_make.lower(), exclude_model.lower()])
+        params.append(max(10, min(int(limit), 300)))
+
+        query = f"""
+            select payload
+            from normalized_listings
+            where {' and '.join(clauses)}
+            order by fetched_at desc
+            limit ?
+        """
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+        payloads: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for row in rows:
+            try:
+                payload = json.loads(row["payload"])
+            except Exception:
+                continue
+            dedupe = str(payload.get("vin") or payload.get("url") or payload.get("source_listing_id") or "")
+            if dedupe and dedupe in seen:
+                continue
+            if dedupe:
+                seen.add(dedupe)
+            payloads.append(payload)
+        return payloads
+
     def save_evaluation(
         self,
         user_id: int | None,
