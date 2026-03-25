@@ -1153,10 +1153,10 @@ function renderPersonalValueResult(resultBody) {
   const personal = resultBody.personal_value || {};
   renderVehicleBrief(resultBody.parsed_details, resultBody.vehicle_summary);
   renderConditionValues(null);
-  renderMileagePriceBands(null);
+  renderMileagePriceBands(resultBody.mileage_price_bands || []);
   renderPersonalValueCards(personal);
   if (mileagePriceBands) {
-    mileagePriceBands.classList.add("hidden-panel");
+    mileagePriceBands.classList.remove("hidden-panel");
   }
   overallRange?.classList.add("hidden-panel");
   renderOverallRange(null);

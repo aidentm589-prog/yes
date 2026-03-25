@@ -271,20 +271,34 @@ class VehicleCompsEngine:
             if listing.mileage is not None and self._listing_market_price(listing) is not None
         ]
         if not valid:
+            fallback_priced = [
+                listing for listing in included
+                if self._listing_market_price(listing) is not None
+            ]
+            fallback_average = self.calculate_market_value(fallback_priced)
+            kbb_adjuster = self._build_kbb_adjuster(fallback_average, query.mileage, fallback_priced)
             return {
                 "evaluation_engine": "personal",
                 "mode": "beta_v1",
-                "status": "needs_more_data",
+                "status": "complete",
                 "provider": "Multi-source vehicle comps engine",
                 "vehicle_summary": self._vehicle_summary(query),
                 "parsed_details": self._query_dict(query),
-                "personal_value": {},
-                "comparable_count": 0,
-                "matched_comps": [],
-                "sample_listings": [],
+                "personal_value": {
+                    "estimated_personal_market_value": money(fallback_average) if fallback_average else "",
+                    "average_price_of_10_closest_mileage_comps": money(fallback_average) if fallback_average else "",
+                    "comp_count_used": len(fallback_priced),
+                    "craigslist_average": self._craigslist_average(fallback_priced),
+                    "clean_title_benchmark": money(fallback_average) if fallback_average else "",
+                    "kelly_blue_book_adjuster": kbb_adjuster["value"],
+                },
+                "comparable_count": len(included),
+                "matched_comps": [self._listing_public_dict(listing) for listing in fallback_priced[:10]],
+                "sample_listings": self._serialize_sample_listings(fallback_priced[:8]),
                 "source_breakdown": self._source_breakdown(included),
                 "source_health": [result.to_health_dict() for result in source_results],
-                "message": "I found some activity, but not enough mileage-aligned comps to price your own car confidently yet.",
+                "message": "Returned the best available market comps found, even though mileage-matched comps were limited.",
+                "upgrade_baseline_value": money(fallback_average) if fallback_average else "",
                 "assumptions": self._assumptions(query, enabled_source_keys),
             }
 
@@ -727,16 +741,40 @@ class VehicleCompsEngine:
         excluded: list[dict[str, Any]],
         enabled_sources: list[str],
     ) -> dict[str, Any]:
+        market_value = self.calculate_market_value(included)
+        safe_buy_value = self.calculate_safe_buy_value(included) if included else 0.0
+        expected_resale_value = self.calculate_expected_resale_value(query.mileage or 0, included) if included else 0.0
+        estimated_profit = self.calculate_estimated_profit(expected_resale_value, safe_buy_value) if included else 0.0
+        title_adjustment = self._build_title_adjustment_projection(
+            market_value=market_value,
+            expected_resale_low=expected_resale_value or market_value,
+            expected_resale_high=expected_resale_value or market_value,
+        ) if market_value else self._empty_title_adjustment(query)
         return {
             "evaluation_engine": "resell",
-            "status": "needs_more_data",
+            "status": "complete",
             "provider": "Multi-source vehicle comps engine",
             "vehicle_summary": self._vehicle_summary(query),
             "parsed_details": self._query_dict(query),
             "values": {},
-            "title_adjustment": self._empty_title_adjustment(query),
-            "listing_price_analysis": self._empty_listing_price_analysis(query, insufficient_data=True),
-            "overall_range": {},
+            "title_adjustment": title_adjustment,
+            "listing_price_analysis": self._build_listing_price_analysis(
+                query,
+                market_value=market_value,
+                safe_buy_price=safe_buy_value,
+                expected_resale_low=expected_resale_value or market_value,
+                expected_resale_high=expected_resale_value or market_value,
+            ) if market_value else self._empty_listing_price_analysis(query, insufficient_data=True),
+            "overall_range": self._build_overall_range(
+                {},
+                included,
+                market_value,
+                safe_buy_value,
+                expected_resale_value or market_value,
+                estimated_profit,
+                query.mileage,
+                title_adjustment.get("rebuilt_title_average", "") if isinstance(title_adjustment, dict) else "",
+            ) if market_value else {},
             "craigslist_average": self._craigslist_average(included),
             "sample_listings": self._serialize_sample_listings(included[:8]),
             "comparable_count": len(included),
@@ -754,8 +792,7 @@ class VehicleCompsEngine:
             "source_health": [result.to_health_dict() for result in source_results],
             "assumptions": self._assumptions(query, enabled_sources),
             "message": (
-                "I searched the enabled sources, but I did not find enough solid mileage-aware comps yet. "
-                "Adding trim, ZIP, or VIN should improve match quality."
+                "Returned the best available comp data from the sources found, even though mileage alignment was lighter than ideal."
             ),
         }
 
