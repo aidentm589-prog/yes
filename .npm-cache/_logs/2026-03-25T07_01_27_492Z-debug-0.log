@@ -1,0 +1,245 @@
+0 verbose cli /usr/local/bin/node /usr/local/bin/npm
+1 info using npm@11.9.0
+2 info using node@v24.14.0
+3 silly config load:file:/usr/local/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/aidenmessier/Documents/New project/.npmrc
+5 silly config load:file:/Users/aidenmessier/.npmrc
+6 silly config load:file:/usr/local/etc/npmrc
+7 verbose title npm create astro@latest graze-on-main-site --template basics --yes --install
+8 verbose argv "create" "astro@latest" "graze-on-main-site" "--" "--template" "basics" "--yes" "--install"
+9 verbose logfile logs-max:10 dir:/Users/aidenmessier/Documents/New project/.npm-cache/_logs/2026-03-25T07_01_27_492Z-
+10 verbose logfile /Users/aidenmessier/Documents/New project/.npm-cache/_logs/2026-03-25T07_01_27_492Z-debug-0.log
+11 silly logfile done cleaning log files
+12 silly packumentCache heap:4496293888 maxSize:1124073472 maxEntrySize:562036736
+13 http fetch GET 200 https://registry.npmjs.org/npm 300ms
+14 http fetch GET 200 https://registry.npmjs.org/create-astro 349ms (cache miss)
+15 silly packumentCache heap:4496293888 maxSize:1124073472 maxEntrySize:562036736
+16 warn exec The following package was not found and will be installed: create-astro@5.0.3
+17 silly idealTree buildDeps
+18 silly fetch manifest create-astro@5.0.3
+19 silly packumentCache full:https://registry.npmjs.org/create-astro cache-miss
+20 http fetch GET 200 https://registry.npmjs.org/create-astro 100ms (cache miss)
+21 silly packumentCache full:https://registry.npmjs.org/create-astro set size:undefined disposed:false
+22 silly placeDep ROOT create-astro@5.0.3 OK for:  want: 5.0.3
+23 silly fetch manifest @astrojs/cli-kit@^0.4.1
+24 silly packumentCache full:https://registry.npmjs.org/@astrojs%2fcli-kit cache-miss
+25 silly fetch manifest @bluwy/giget-core@^0.1.6
+26 silly packumentCache full:https://registry.npmjs.org/@bluwy%2fgiget-core cache-miss
+27 http fetch GET 200 https://registry.npmjs.org/@bluwy%2fgiget-core 82ms (cache miss)
+28 silly packumentCache full:https://registry.npmjs.org/@bluwy%2fgiget-core set size:undefined disposed:false
+29 http fetch GET 200 https://registry.npmjs.org/@astrojs%2fcli-kit 88ms (cache miss)
+30 silly packumentCache full:https://registry.npmjs.org/@astrojs%2fcli-kit set size:undefined disposed:false
+31 silly placeDep ROOT @astrojs/cli-kit@0.4.1 OK for: create-astro@5.0.3 want: ^0.4.1
+32 silly placeDep ROOT @bluwy/giget-core@0.1.7 OK for: create-astro@5.0.3 want: ^0.1.6
+33 silly fetch manifest chalk@^5.0.1
+34 silly packumentCache full:https://registry.npmjs.org/chalk cache-miss
+35 silly fetch manifest log-update@^5.0.1
+36 silly packumentCache full:https://registry.npmjs.org/log-update cache-miss
+37 silly fetch manifest sisteransi@^1.0.5
+38 silly packumentCache full:https://registry.npmjs.org/sisteransi cache-miss
+39 silly fetch manifest modern-tar@^0.7.5
+40 silly packumentCache full:https://registry.npmjs.org/modern-tar cache-miss
+41 http fetch GET 200 https://registry.npmjs.org/chalk 156ms (cache miss)
+42 silly packumentCache full:https://registry.npmjs.org/chalk set size:undefined disposed:false
+43 http fetch GET 200 https://registry.npmjs.org/log-update 159ms (cache miss)
+44 silly packumentCache full:https://registry.npmjs.org/log-update set size:undefined disposed:false
+45 http fetch GET 200 https://registry.npmjs.org/sisteransi 245ms (cache miss)
+46 silly packumentCache full:https://registry.npmjs.org/sisteransi set size:undefined disposed:false
+47 http fetch GET 200 https://registry.npmjs.org/modern-tar 245ms (cache miss)
+48 silly packumentCache full:https://registry.npmjs.org/modern-tar set size:undefined disposed:false
+49 silly placeDep ROOT chalk@5.6.2 OK for: @astrojs/cli-kit@0.4.1 want: ^5.0.1
+50 silly placeDep ROOT log-update@5.0.1 OK for: @astrojs/cli-kit@0.4.1 want: ^5.0.1
+51 silly placeDep ROOT sisteransi@1.0.5 OK for: @astrojs/cli-kit@0.4.1 want: ^1.0.5
+52 silly fetch manifest wrap-ansi@^8.0.1
+53 silly packumentCache full:https://registry.npmjs.org/wrap-ansi cache-miss
+54 silly fetch manifest cli-cursor@^4.0.0
+55 silly packumentCache full:https://registry.npmjs.org/cli-cursor cache-miss
+56 silly fetch manifest slice-ansi@^5.0.0
+57 silly packumentCache full:https://registry.npmjs.org/slice-ansi cache-miss
+58 silly fetch manifest strip-ansi@^7.0.1
+59 silly packumentCache full:https://registry.npmjs.org/strip-ansi cache-miss
+60 silly fetch manifest ansi-escapes@^5.0.0
+61 silly packumentCache full:https://registry.npmjs.org/ansi-escapes cache-miss
+62 http fetch GET 200 https://registry.npmjs.org/cli-cursor 151ms (cache miss)
+63 silly packumentCache full:https://registry.npmjs.org/cli-cursor set size:undefined disposed:false
+64 http fetch GET 200 https://registry.npmjs.org/wrap-ansi 157ms (cache miss)
+65 silly packumentCache full:https://registry.npmjs.org/wrap-ansi set size:undefined disposed:false
+66 http fetch GET 200 https://registry.npmjs.org/slice-ansi 162ms (cache miss)
+67 silly packumentCache full:https://registry.npmjs.org/slice-ansi set size:undefined disposed:false
+68 http fetch GET 200 https://registry.npmjs.org/strip-ansi 164ms (cache miss)
+69 silly packumentCache full:https://registry.npmjs.org/strip-ansi set size:undefined disposed:false
+70 http fetch GET 200 https://registry.npmjs.org/ansi-escapes 248ms (cache miss)
+71 silly packumentCache full:https://registry.npmjs.org/ansi-escapes set size:undefined disposed:false
+72 silly placeDep ROOT modern-tar@0.7.6 OK for: @bluwy/giget-core@0.1.7 want: ^0.7.5
+73 silly placeDep ROOT ansi-escapes@5.0.0 OK for: log-update@5.0.1 want: ^5.0.0
+74 silly placeDep ROOT cli-cursor@4.0.0 OK for: log-update@5.0.1 want: ^4.0.0
+75 silly placeDep ROOT slice-ansi@5.0.0 OK for: log-update@5.0.1 want: ^5.0.0
+76 silly placeDep ROOT strip-ansi@7.2.0 OK for: log-update@5.0.1 want: ^7.0.1
+77 silly placeDep ROOT wrap-ansi@8.1.0 OK for: log-update@5.0.1 want: ^8.0.1
+78 silly fetch manifest type-fest@^1.0.2
+79 silly packumentCache full:https://registry.npmjs.org/type-fest cache-miss
+80 silly fetch manifest restore-cursor@^4.0.0
+81 silly packumentCache full:https://registry.npmjs.org/restore-cursor cache-miss
+82 silly fetch manifest ansi-styles@^6.0.0
+83 silly packumentCache full:https://registry.npmjs.org/ansi-styles cache-miss
+84 silly fetch manifest is-fullwidth-code-point@^4.0.0
+85 silly packumentCache full:https://registry.npmjs.org/is-fullwidth-code-point cache-miss
+86 silly fetch manifest ansi-regex@^6.2.2
+87 silly packumentCache full:https://registry.npmjs.org/ansi-regex cache-miss
+88 silly fetch manifest ansi-styles@^6.1.0
+89 silly packumentCache full:https://registry.npmjs.org/ansi-styles cache-miss
+90 silly fetch manifest string-width@^5.0.1
+91 silly packumentCache full:https://registry.npmjs.org/string-width cache-miss
+92 http fetch GET 200 https://registry.npmjs.org/restore-cursor 76ms (cache miss)
+93 silly packumentCache full:https://registry.npmjs.org/restore-cursor set size:undefined disposed:false
+94 http fetch GET 200 https://registry.npmjs.org/is-fullwidth-code-point 146ms (cache miss)
+95 silly packumentCache full:https://registry.npmjs.org/is-fullwidth-code-point set size:undefined disposed:false
+96 http fetch GET 200 https://registry.npmjs.org/ansi-regex 147ms (cache miss)
+97 silly packumentCache full:https://registry.npmjs.org/ansi-regex set size:undefined disposed:false
+98 http fetch GET 200 https://registry.npmjs.org/ansi-styles 152ms (cache miss)
+99 silly packumentCache full:https://registry.npmjs.org/ansi-styles set size:undefined disposed:false
+100 http fetch GET 200 https://registry.npmjs.org/type-fest 159ms (cache miss)
+101 silly packumentCache full:https://registry.npmjs.org/type-fest set size:undefined disposed:false
+102 http fetch GET 200 https://registry.npmjs.org/ansi-styles 192ms (cache miss)
+103 silly packumentCache full:https://registry.npmjs.org/ansi-styles set size:undefined disposed:false
+104 http fetch GET 200 https://registry.npmjs.org/string-width 436ms (cache miss)
+105 silly packumentCache full:https://registry.npmjs.org/string-width set size:undefined disposed:false
+106 silly placeDep ROOT type-fest@1.4.0 OK for: ansi-escapes@5.0.0 want: ^1.0.2
+107 silly placeDep ROOT restore-cursor@4.0.0 OK for: cli-cursor@4.0.0 want: ^4.0.0
+108 silly fetch manifest onetime@^5.1.0
+109 silly packumentCache full:https://registry.npmjs.org/onetime cache-miss
+110 silly fetch manifest signal-exit@^3.0.2
+111 silly packumentCache full:https://registry.npmjs.org/signal-exit cache-miss
+112 http fetch GET 200 https://registry.npmjs.org/onetime 215ms (cache miss)
+113 silly packumentCache full:https://registry.npmjs.org/onetime set size:undefined disposed:false
+114 http fetch GET 200 https://registry.npmjs.org/signal-exit 224ms (cache miss)
+115 silly packumentCache full:https://registry.npmjs.org/signal-exit set size:undefined disposed:false
+116 silly placeDep ROOT onetime@5.1.2 OK for: restore-cursor@4.0.0 want: ^5.1.0
+117 silly placeDep ROOT signal-exit@3.0.7 OK for: restore-cursor@4.0.0 want: ^3.0.2
+118 silly fetch manifest mimic-fn@^2.1.0
+119 silly packumentCache full:https://registry.npmjs.org/mimic-fn cache-miss
+120 http fetch GET 200 https://registry.npmjs.org/mimic-fn 46ms (cache miss)
+121 silly packumentCache full:https://registry.npmjs.org/mimic-fn set size:undefined disposed:false
+122 silly placeDep ROOT mimic-fn@2.1.0 OK for: onetime@5.1.2 want: ^2.1.0
+123 silly placeDep ROOT ansi-styles@6.2.3 OK for: slice-ansi@5.0.0 want: ^6.0.0
+124 silly placeDep ROOT is-fullwidth-code-point@4.0.0 OK for: slice-ansi@5.0.0 want: ^4.0.0
+125 silly placeDep ROOT ansi-regex@6.2.2 OK for: strip-ansi@7.2.0 want: ^6.2.2
+126 silly placeDep ROOT string-width@5.1.2 OK for: wrap-ansi@8.1.0 want: ^5.0.1
+127 silly fetch manifest emoji-regex@^9.2.2
+128 silly packumentCache full:https://registry.npmjs.org/emoji-regex cache-miss
+129 silly fetch manifest eastasianwidth@^0.2.0
+130 silly packumentCache full:https://registry.npmjs.org/eastasianwidth cache-miss
+131 http fetch GET 200 https://registry.npmjs.org/eastasianwidth 74ms (cache miss)
+132 silly packumentCache full:https://registry.npmjs.org/eastasianwidth set size:undefined disposed:false
+133 http fetch GET 200 https://registry.npmjs.org/emoji-regex 79ms (cache miss)
+134 silly packumentCache full:https://registry.npmjs.org/emoji-regex set size:undefined disposed:false
+135 silly placeDep ROOT eastasianwidth@0.2.0 OK for: string-width@5.1.2 want: ^0.2.0
+136 silly placeDep ROOT emoji-regex@9.2.2 OK for: string-width@5.1.2 want: ^9.2.2
+137 silly reify moves {}
+138 silly audit bulk request {
+138 silly audit   'create-astro': [ '5.0.3' ],
+138 silly audit   '@astrojs/cli-kit': [ '0.4.1' ],
+138 silly audit   '@bluwy/giget-core': [ '0.1.7' ],
+138 silly audit   chalk: [ '5.6.2' ],
+138 silly audit   'log-update': [ '5.0.1' ],
+138 silly audit   sisteransi: [ '1.0.5' ],
+138 silly audit   'modern-tar': [ '0.7.6' ],
+138 silly audit   'ansi-escapes': [ '5.0.0' ],
+138 silly audit   'cli-cursor': [ '4.0.0' ],
+138 silly audit   'slice-ansi': [ '5.0.0' ],
+138 silly audit   'strip-ansi': [ '7.2.0' ],
+138 silly audit   'wrap-ansi': [ '8.1.0' ],
+138 silly audit   'type-fest': [ '1.4.0' ],
+138 silly audit   'restore-cursor': [ '4.0.0' ],
+138 silly audit   onetime: [ '5.1.2' ],
+138 silly audit   'signal-exit': [ '3.0.7' ],
+138 silly audit   'mimic-fn': [ '2.1.0' ],
+138 silly audit   'ansi-styles': [ '6.2.3' ],
+138 silly audit   'is-fullwidth-code-point': [ '4.0.0' ],
+138 silly audit   'ansi-regex': [ '6.2.2' ],
+138 silly audit   'string-width': [ '5.1.2' ],
+138 silly audit   eastasianwidth: [ '0.2.0' ],
+138 silly audit   'emoji-regex': [ '9.2.2' ]
+138 silly audit }
+139 http cache string-width@https://registry.npmjs.org/string-width/-/string-width-5.1.2.tgz 1ms (cache hit)
+140 http cache ansi-regex@https://registry.npmjs.org/ansi-regex/-/ansi-regex-6.2.2.tgz 0ms (cache hit)
+141 http cache emoji-regex@https://registry.npmjs.org/emoji-regex/-/emoji-regex-9.2.2.tgz 0ms (cache hit)
+142 http cache ansi-styles@https://registry.npmjs.org/ansi-styles/-/ansi-styles-6.2.3.tgz 0ms (cache hit)
+143 http cache mimic-fn@https://registry.npmjs.org/mimic-fn/-/mimic-fn-2.1.0.tgz 0ms (cache hit)
+144 http cache signal-exit@https://registry.npmjs.org/signal-exit/-/signal-exit-3.0.7.tgz 0ms (cache hit)
+145 http cache onetime@https://registry.npmjs.org/onetime/-/onetime-5.1.2.tgz 0ms (cache hit)
+146 http cache eastasianwidth@https://registry.npmjs.org/eastasianwidth/-/eastasianwidth-0.2.0.tgz 0ms (cache hit)
+147 http cache restore-cursor@https://registry.npmjs.org/restore-cursor/-/restore-cursor-4.0.0.tgz 0ms (cache hit)
+148 http cache strip-ansi@https://registry.npmjs.org/strip-ansi/-/strip-ansi-7.2.0.tgz 0ms (cache hit)
+149 http cache slice-ansi@https://registry.npmjs.org/slice-ansi/-/slice-ansi-5.0.0.tgz 0ms (cache hit)
+150 http cache cli-cursor@https://registry.npmjs.org/cli-cursor/-/cli-cursor-4.0.0.tgz 0ms (cache hit)
+151 http cache ansi-escapes@https://registry.npmjs.org/ansi-escapes/-/ansi-escapes-5.0.0.tgz 0ms (cache hit)
+152 http cache modern-tar@https://registry.npmjs.org/modern-tar/-/modern-tar-0.7.6.tgz 0ms (cache hit)
+153 http cache sisteransi@https://registry.npmjs.org/sisteransi/-/sisteransi-1.0.5.tgz 0ms (cache hit)
+154 http cache log-update@https://registry.npmjs.org/log-update/-/log-update-5.0.1.tgz 0ms (cache hit)
+155 http cache @bluwy/giget-core@https://registry.npmjs.org/@bluwy/giget-core/-/giget-core-0.1.7.tgz 0ms (cache hit)
+156 http cache type-fest@https://registry.npmjs.org/type-fest/-/type-fest-1.4.0.tgz 0ms (cache hit)
+157 http cache is-fullwidth-code-point@https://registry.npmjs.org/is-fullwidth-code-point/-/is-fullwidth-code-point-4.0.0.tgz 1ms (cache hit)
+158 http cache chalk@https://registry.npmjs.org/chalk/-/chalk-5.6.2.tgz 0ms (cache hit)
+159 http cache create-astro@https://registry.npmjs.org/create-astro/-/create-astro-5.0.3.tgz 0ms (cache hit)
+160 http cache @astrojs/cli-kit@https://registry.npmjs.org/@astrojs/cli-kit/-/cli-kit-0.4.1.tgz 0ms (cache hit)
+161 http cache wrap-ansi@https://registry.npmjs.org/wrap-ansi/-/wrap-ansi-8.1.0.tgz 0ms (cache hit)
+162 silly tarball no local data for string-width@https://registry.npmjs.org/string-width/-/string-width-5.1.2.tgz. Extracting by manifest.
+163 silly tarball no local data for ansi-regex@https://registry.npmjs.org/ansi-regex/-/ansi-regex-6.2.2.tgz. Extracting by manifest.
+164 silly tarball no local data for emoji-regex@https://registry.npmjs.org/emoji-regex/-/emoji-regex-9.2.2.tgz. Extracting by manifest.
+165 silly tarball no local data for ansi-styles@https://registry.npmjs.org/ansi-styles/-/ansi-styles-6.2.3.tgz. Extracting by manifest.
+166 silly tarball no local data for mimic-fn@https://registry.npmjs.org/mimic-fn/-/mimic-fn-2.1.0.tgz. Extracting by manifest.
+167 silly tarball no local data for signal-exit@https://registry.npmjs.org/signal-exit/-/signal-exit-3.0.7.tgz. Extracting by manifest.
+168 silly tarball no local data for onetime@https://registry.npmjs.org/onetime/-/onetime-5.1.2.tgz. Extracting by manifest.
+169 silly tarball no local data for eastasianwidth@https://registry.npmjs.org/eastasianwidth/-/eastasianwidth-0.2.0.tgz. Extracting by manifest.
+170 silly tarball no local data for restore-cursor@https://registry.npmjs.org/restore-cursor/-/restore-cursor-4.0.0.tgz. Extracting by manifest.
+171 silly tarball no local data for strip-ansi@https://registry.npmjs.org/strip-ansi/-/strip-ansi-7.2.0.tgz. Extracting by manifest.
+172 silly tarball no local data for slice-ansi@https://registry.npmjs.org/slice-ansi/-/slice-ansi-5.0.0.tgz. Extracting by manifest.
+173 silly tarball no local data for cli-cursor@https://registry.npmjs.org/cli-cursor/-/cli-cursor-4.0.0.tgz. Extracting by manifest.
+174 silly tarball no local data for ansi-escapes@https://registry.npmjs.org/ansi-escapes/-/ansi-escapes-5.0.0.tgz. Extracting by manifest.
+175 silly tarball no local data for modern-tar@https://registry.npmjs.org/modern-tar/-/modern-tar-0.7.6.tgz. Extracting by manifest.
+176 silly tarball no local data for sisteransi@https://registry.npmjs.org/sisteransi/-/sisteransi-1.0.5.tgz. Extracting by manifest.
+177 silly tarball no local data for log-update@https://registry.npmjs.org/log-update/-/log-update-5.0.1.tgz. Extracting by manifest.
+178 silly tarball no local data for @bluwy/giget-core@https://registry.npmjs.org/@bluwy/giget-core/-/giget-core-0.1.7.tgz. Extracting by manifest.
+179 silly tarball no local data for type-fest@https://registry.npmjs.org/type-fest/-/type-fest-1.4.0.tgz. Extracting by manifest.
+180 silly tarball no local data for is-fullwidth-code-point@https://registry.npmjs.org/is-fullwidth-code-point/-/is-fullwidth-code-point-4.0.0.tgz. Extracting by manifest.
+181 silly tarball no local data for chalk@https://registry.npmjs.org/chalk/-/chalk-5.6.2.tgz. Extracting by manifest.
+182 silly tarball no local data for create-astro@https://registry.npmjs.org/create-astro/-/create-astro-5.0.3.tgz. Extracting by manifest.
+183 silly tarball no local data for @astrojs/cli-kit@https://registry.npmjs.org/@astrojs/cli-kit/-/cli-kit-0.4.1.tgz. Extracting by manifest.
+184 silly tarball no local data for wrap-ansi@https://registry.npmjs.org/wrap-ansi/-/wrap-ansi-8.1.0.tgz. Extracting by manifest.
+185 http fetch POST 200 https://registry.npmjs.org/-/npm/v1/security/advisories/bulk 291ms
+186 silly audit report {}
+187 http fetch GET 200 https://registry.npmjs.org/ansi-styles/-/ansi-styles-6.2.3.tgz 643ms (cache miss)
+188 http fetch GET 200 https://registry.npmjs.org/ansi-regex/-/ansi-regex-6.2.2.tgz 655ms (cache miss)
+189 http fetch GET 200 https://registry.npmjs.org/mimic-fn/-/mimic-fn-2.1.0.tgz 652ms (cache miss)
+190 http fetch GET 200 https://registry.npmjs.org/signal-exit/-/signal-exit-3.0.7.tgz 663ms (cache miss)
+191 http fetch GET 200 https://registry.npmjs.org/string-width/-/string-width-5.1.2.tgz 677ms (cache miss)
+192 http fetch GET 200 https://registry.npmjs.org/log-update/-/log-update-5.0.1.tgz 642ms (cache miss)
+193 http fetch GET 200 https://registry.npmjs.org/is-fullwidth-code-point/-/is-fullwidth-code-point-4.0.0.tgz 636ms (cache miss)
+194 http fetch GET 200 https://registry.npmjs.org/sisteransi/-/sisteransi-1.0.5.tgz 651ms (cache miss)
+195 http fetch GET 200 https://registry.npmjs.org/wrap-ansi/-/wrap-ansi-8.1.0.tgz 639ms (cache miss)
+196 http fetch GET 200 https://registry.npmjs.org/eastasianwidth/-/eastasianwidth-0.2.0.tgz 680ms (cache miss)
+197 http fetch GET 200 https://registry.npmjs.org/cli-cursor/-/cli-cursor-4.0.0.tgz 672ms (cache miss)
+198 http fetch GET 200 https://registry.npmjs.org/onetime/-/onetime-5.1.2.tgz 690ms (cache miss)
+199 http fetch GET 200 https://registry.npmjs.org/restore-cursor/-/restore-cursor-4.0.0.tgz 693ms (cache miss)
+200 http fetch GET 200 https://registry.npmjs.org/strip-ansi/-/strip-ansi-7.2.0.tgz 689ms (cache miss)
+201 http fetch GET 200 https://registry.npmjs.org/slice-ansi/-/slice-ansi-5.0.0.tgz 689ms (cache miss)
+202 http fetch GET 200 https://registry.npmjs.org/ansi-escapes/-/ansi-escapes-5.0.0.tgz 690ms (cache miss)
+203 http fetch GET 200 https://registry.npmjs.org/@bluwy/giget-core/-/giget-core-0.1.7.tgz 686ms (cache miss)
+204 http fetch GET 200 https://registry.npmjs.org/emoji-regex/-/emoji-regex-9.2.2.tgz 745ms (cache miss)
+205 http fetch GET 200 https://registry.npmjs.org/chalk/-/chalk-5.6.2.tgz 733ms (cache miss)
+206 http fetch GET 200 https://registry.npmjs.org/modern-tar/-/modern-tar-0.7.6.tgz 751ms (cache miss)
+207 http fetch GET 200 https://registry.npmjs.org/create-astro/-/create-astro-5.0.3.tgz 757ms (cache miss)
+208 http fetch GET 200 https://registry.npmjs.org/@astrojs/cli-kit/-/cli-kit-0.4.1.tgz 816ms (cache miss)
+209 http fetch GET 200 https://registry.npmjs.org/type-fest/-/type-fest-1.4.0.tgz 826ms (cache miss)
+210 verbose cwd /Users/aidenmessier/Documents/New project
+211 verbose os Darwin 24.6.0
+212 verbose node v24.14.0
+213 verbose npm  v11.9.0
+214 notice
+214 notice New minor version of npm available! 11.9.0 -> 11.12.0
+214 notice Changelog: https://github.com/npm/cli/releases/tag/v11.12.0
+214 notice To update run: npm install -g npm@11.12.0
+214 notice  { force: true, Symbol(proc-log.meta): true }
+215 verbose exit 0
+216 info ok

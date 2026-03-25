@@ -1,0 +1,185 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum RunStatus {
+  queued
+  running
+  waiting_for_approval
+  completed
+  failed
+  cancelled
+  timed_out
+}
+
+enum ActionStatus {
+  pending
+  success
+  failure
+  blocked
+}
+
+enum ApprovalStatus {
+  pending
+  approved
+  rejected
+  expired
+}
+
+enum WorkflowMode {
+  general_browser_task
+  extract_and_summarize
+  compare_options
+  draft_form_fill
+}
+
+model Run {
+  id                  String            @id @default(cuid())
+  status              RunStatus         @default(queued)
+  workflowMode        WorkflowMode      @default(general_browser_task)
+  goal                String
+  model               String
+  reasoningEffort     String
+  maxSteps            Int
+  maxRetries          Int
+  timeoutMs           Int
+  stepCount           Int               @default(0)
+  retryCount          Int               @default(0)
+  policySnapshot      Json
+  memory              Json?
+  storagePath         String
+  latestUrl           String?
+  latestObservationId String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  startedAt           DateTime?
+  finishedAt          DateTime?
+  lastHeartbeatAt     DateTime?
+  task                Task?
+  actions             AgentAction[]
+  observations        Observation[]
+  screenshots         Screenshot[]
+  approvals           ApprovalRequest[]
+  extractions         ExtractionArtifact[]
+  errors              ErrorEvent[]
+  finalOutcome        FinalOutcome?
+}
+
+model Task {
+  id             String   @id @default(cuid())
+  runId          String   @unique
+  originalPrompt String
+  normalizedGoal String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  run            Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+}
+
+model AgentAction {
+  id            String       @id @default(cuid())
+  runId         String
+  kind          String
+  status        ActionStatus @default(pending)
+  rationale     String
+  inputPayload  Json
+  outputPayload Json?
+  errorMessage  String?
+  url           String?
+  retryCount    Int          @default(0)
+  createdAt     DateTime     @default(now())
+  completedAt   DateTime?
+  observationId String?
+  screenshotId  String?
+  run           Run          @relation(fields: [runId], references: [id], onDelete: Cascade)
+  observation   Observation? @relation(fields: [observationId], references: [id])
+}
+
+model Observation {
+  id             String        @id @default(cuid())
+  runId          String
+  url            String
+  title          String?
+  summary        String
+  visibleText    String
+  interactiveMap Json?
+  recentErrors   Json?
+  screenshotPath String?
+  createdAt      DateTime      @default(now())
+  run            Run           @relation(fields: [runId], references: [id], onDelete: Cascade)
+  actions        AgentAction[]
+  approvals      ApprovalRequest[]
+  screenshots    Screenshot[]
+}
+
+model Screenshot {
+  id            String       @id @default(cuid())
+  runId         String
+  observationId String?
+  label         String
+  path          String
+  mimeType      String       @default("image/png")
+  createdAt     DateTime     @default(now())
+  run           Run          @relation(fields: [runId], references: [id], onDelete: Cascade)
+  observation   Observation? @relation(fields: [observationId], references: [id])
+}
+
+model ApprovalRequest {
+  id             String         @id @default(cuid())
+  runId          String
+  observationId  String?
+  status         ApprovalStatus @default(pending)
+  reason         String
+  actionPayload  Json
+  pageContext    Json?
+  screenshotPath String?
+  requestedAt    DateTime       @default(now())
+  resolvedAt     DateTime?
+  resolutionNote String?
+  run            Run            @relation(fields: [runId], references: [id], onDelete: Cascade)
+  observation    Observation?   @relation(fields: [observationId], references: [id])
+}
+
+model ExtractionArtifact {
+  id        String   @id @default(cuid())
+  runId     String
+  kind      String
+  label     String
+  content   Json
+  createdAt DateTime @default(now())
+  run       Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+}
+
+model FinalOutcome {
+  id             String   @id @default(cuid())
+  runId          String   @unique
+  status         String
+  summary        String
+  structuredData Json?
+  createdAt      DateTime @default(now())
+  run            Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+}
+
+model ErrorEvent {
+  id        String   @id @default(cuid())
+  runId     String
+  code      String
+  message   String
+  details   Json?
+  createdAt DateTime @default(now())
+  run       Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+}
+
+model Setting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+}
