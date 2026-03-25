@@ -1,6 +1,5 @@
 const form = document.getElementById("lookup-form");
 const vehicleInput = document.getElementById("vehicle-input");
-const vehicleSuggestionBox = document.getElementById("vehicle-suggestion-box");
 const vehicleInputLabel = document.getElementById("vehicle-input-label");
 const vehicleInputHelper = document.getElementById("vehicle-input-helper");
 const mileageField = document.getElementById("mileage-field");
@@ -87,7 +86,6 @@ let showingAllComparableListings = false;
 let currentMileageBands = [];
 let currentMainEvaluation = null;
 let currentUpgradePayload = null;
-let vehicleSuggestionTimer = null;
 let loadingProgressTimer = null;
 let loadingProgressValue = 0;
 let currentCompSort = "closest_mileage";
@@ -118,6 +116,7 @@ const STAT_HELP = {
   condition_range: "The overall low-to-high pricing span built from the condition sweep and valid market comps.",
   average_price_near_this_mileage: "The average adjusted price from the nearest mileage comps, using only comps within the nearby mileage window.",
   listing_price_vs_avg_near_mileage: "Average price near this mileage minus the listing price, so you can see whether the asking price sits above or below nearby-mileage comps.",
+  kelly_blue_book_adjuster: "A mileage-ranked discount from the market-wide average. Lower-mileage placements receive a lighter cut and higher-mileage placements receive a deeper one.",
   clean_title_benchmark: "The clean-title anchor value before any title-damage reduction is applied.",
   clean_title_range: "The expected clean-title value band before rebuilt or reconstructed title adjustments.",
   rebuilt_title_range: "The projected value band after applying title-damage reductions to the clean-title value.",
@@ -146,6 +145,7 @@ const HELP_ENABLED_KEYS = new Set([
   "condition_range",
   "average_price_near_this_mileage",
   "listing_price_vs_avg_near_mileage",
+  "kelly_blue_book_adjuster",
   "clean_title_benchmark",
   "clean_title_range",
   "rebuilt_title_range",
@@ -560,54 +560,6 @@ function setLoadingVisible(visible, message = "", title = "", kicker = "") {
   }
   if (loadingKicker) {
     loadingKicker.textContent = kicker || "Evaluating the batch";
-  }
-}
-
-function hideVehicleSuggestions() {
-  if (!vehicleSuggestionBox) {
-    return;
-  }
-  vehicleSuggestionBox.classList.add("hidden-panel");
-  vehicleSuggestionBox.innerHTML = "";
-}
-
-function renderVehicleSuggestions(items = []) {
-  if (!vehicleSuggestionBox) {
-    return;
-  }
-  if (!Array.isArray(items) || !items.length) {
-    hideVehicleSuggestions();
-    return;
-  }
-  vehicleSuggestionBox.classList.remove("hidden-panel");
-  vehicleSuggestionBox.innerHTML = items.map((item) => `
-    <button type="button" class="vehicle-suggestion-item" data-suggestion="${escapeHtml(item.fill_value || item.label || "")}">
-      <strong>${escapeHtml(item.label || "")}</strong>
-      <span>${escapeHtml(item.detail || `${item.hit_count || 0} cached matches`)}</span>
-    </button>
-  `).join("");
-}
-
-async function loadVehicleSuggestions(searchText) {
-  if (isBulkMode() || selectedEvaluationEngine() === "personal" && !String(searchText || "").trim()) {
-    hideVehicleSuggestions();
-    return;
-  }
-  const normalized = String(searchText || "").trim();
-  if (normalized.length < 3) {
-    hideVehicleSuggestions();
-    return;
-  }
-  try {
-    const response = await fetch(`/api/vehicle-suggestions?q=${encodeURIComponent(normalized)}&limit=8`);
-    const payload = await response.json();
-    if (!payload.ok) {
-      hideVehicleSuggestions();
-      return;
-    }
-    renderVehicleSuggestions(payload.items || []);
-  } catch (_error) {
-    hideVehicleSuggestions();
   }
 }
 
@@ -1170,6 +1122,7 @@ function renderPersonalValueCards(personal = {}) {
     ["Estimated Personal Market Value", personal.estimated_personal_market_value || ""],
     ["10 Closest-Mileage Average", personal.average_price_of_10_closest_mileage_comps || ""],
     ["Comp Count Used", personal.comp_count_used ? String(personal.comp_count_used) : ""],
+    ["Kelly Blue Book Adjuster", personal.kelly_blue_book_adjuster || ""],
     ["Clean Title Benchmark", personal.clean_title_benchmark || ""],
   ].filter(([, value]) => value);
 
@@ -1383,6 +1336,7 @@ function renderBulkResults(items = []) {
     const keyFacts = [
       ["Listed Price", item.listed_price || ""],
       ["Market Value", item.market_value || ""],
+      ["Kelly Blue Book Adjuster", item.kelly_blue_book_adjuster || ""],
       ["Safe Buy Value", item.safe_buy_value || ""],
       ["Expected Resale", item.expected_resale_value || ""],
       ["Estimated Profit", item.estimated_profit || ""],
@@ -1788,6 +1742,7 @@ function renderZippyResult(resultBody) {
   const zippyRange = {
     average_price_of_all_comps: values.average_all_comps || "",
     average_price_of_20_closest_mileage_comps: values.average_20_closest_mileage_comps || values.average_all_comps || "",
+    kelly_blue_book_adjuster: values.kelly_blue_book_adjuster || "",
     very_poor_buy_price: values.very_poor_buy_price || "",
     good_buy_price: values.good_buy_price || "",
     excellent_buy_price: values.excellent_buy_price || "",
@@ -2292,29 +2247,6 @@ if (compSortSelect) {
     renderSampleListings(currentComparableListings);
   });
 }
-
-vehicleInput?.addEventListener("input", () => {
-  if (vehicleSuggestionTimer) {
-    window.clearTimeout(vehicleSuggestionTimer);
-  }
-  vehicleSuggestionTimer = window.setTimeout(() => {
-    loadVehicleSuggestions(vehicleInput.value);
-  }, 140);
-});
-
-vehicleInput?.addEventListener("blur", () => {
-  window.setTimeout(() => hideVehicleSuggestions(), 140);
-});
-
-vehicleSuggestionBox?.addEventListener("click", (event) => {
-  const button = event.target.closest(".vehicle-suggestion-item");
-  if (!button || !vehicleInput) {
-    return;
-  }
-  const suggestion = button.getAttribute("data-suggestion") || "";
-  vehicleInput.value = suggestion;
-  hideVehicleSuggestions();
-});
 
 initBillingToggle();
 initSubscriptionSelection();

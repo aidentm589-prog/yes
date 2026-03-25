@@ -1,7 +1,6 @@
-import type OpenAI from "openai";
-
 import { plannerDecisionSchema, type PlannerDecision } from "@/lib/schemas";
-import { imageFileToDataUrl } from "@/lib/storage";
+import { getEnv } from "@/lib/env";
+import { generateWithOllama } from "@/lib/ollama";
 import { getOpenAIClient } from "@/lib/openai";
 import type { ObservationSnapshot, RunMemory } from "@/types/operator";
 
@@ -17,7 +16,7 @@ type PlannerInput = {
   pendingApproval: boolean;
 };
 
-const plannerTool: OpenAI.Responses.FunctionTool = {
+const plannerTool = {
   type: "function",
   name: "propose_browser_action",
   description: "Choose the next browser action for the current run.",
@@ -25,90 +24,41 @@ const plannerTool: OpenAI.Responses.FunctionTool = {
   parameters: {
     type: "object",
     additionalProperties: false,
-    required: ["rationale", "completionSignal", "action"],
+    required: ["rationale", "completionSignal", "actionJson"],
     properties: {
       rationale: { type: "string" },
       completionSignal: {
         type: "string",
         enum: ["continue", "needs_approval", "done"],
       },
-      action: {
-        type: "object",
-        additionalProperties: false,
-        required: ["kind"],
-        properties: {
-          kind: {
-            type: "string",
-            enum: [
-              "navigate",
-              "click",
-              "type",
-              "selectOption",
-              "pressKey",
-              "scroll",
-              "wait",
-              "getPageSummary",
-              "extractText",
-              "captureScreenshot",
-              "requestApproval",
-              "finish",
-            ],
-          },
-          url: { type: "string" },
-          selector: { type: "string" },
-          text: { type: "string" },
-          value: { type: "string" },
-          key: { type: "string" },
-          direction: { type: "string", enum: ["up", "down"] },
-          amount: { type: "number" },
-          ms: { type: "number" },
-          label: { type: "string" },
-          reason: { type: "string" },
-          actionPayload: {
-            type: "object",
-            additionalProperties: true,
-          },
-          summary: { type: "string" },
-          structuredData: {
-            type: "object",
-            additionalProperties: true,
-          },
-        },
-      },
+      actionJson: { type: "string" },
     },
   },
-};
+} as const;
 
-function getFunctionCall(response: OpenAI.Responses.Response) {
-  return response.output.find((item) => item.type === "function_call");
+function normalizePlannerDecision(raw: Record<string, unknown>) {
+  const actionJson = typeof raw.actionJson === "string" ? raw.actionJson : "";
+  const action = JSON.parse(actionJson) as Record<string, unknown>;
+
+  return {
+    rationale: raw.rationale,
+    completionSignal: raw.completionSignal,
+    action,
+  };
 }
 
 export async function decideNextAction(input: PlannerInput): Promise<PlannerDecision> {
+  const env = getEnv();
+  if (env.OPERATOR_PLANNER_PROVIDER === "ollama") {
+    return decideNextActionWithOllama(input);
+  }
+
+  return decideNextActionWithOpenAI(input);
+}
+
+async function decideNextActionWithOpenAI(input: PlannerInput): Promise<PlannerDecision> {
   const client = getOpenAIClient();
   const instructions = buildPlannerPrompt(input.workflowGuidance);
-  const content: OpenAI.Responses.ResponseInputMessageContentList = [
-    {
-      type: "input_text",
-      text: JSON.stringify(
-        {
-          goal: input.goal,
-          pendingApproval: input.pendingApproval,
-          memory: input.memory,
-          observation: input.observation,
-        },
-        null,
-        2,
-      ),
-    },
-  ];
-
-  if (input.observation.screenshotPath) {
-    content.push({
-      type: "input_image",
-      image_url: await imageFileToDataUrl(input.observation.screenshotPath),
-      detail: "low",
-    });
-  }
 
   const response = await client.responses.create({
     model: input.model,
@@ -127,15 +77,69 @@ export async function decideNextAction(input: PlannerInput): Promise<PlannerDeci
       },
       {
         role: "user",
-        content,
+        content: [
+          {
+            type: "input_text",
+            text: JSON.stringify(
+              {
+                goal: input.goal,
+                pendingApproval: input.pendingApproval,
+                memory: input.memory,
+                observation: input.observation,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
       },
     ],
   });
 
-  const toolCall = getFunctionCall(response);
+  const toolCall = response.output.find((item) => item.type === "function_call");
   if (!toolCall || toolCall.type !== "function_call") {
     throw new Error("Planner did not return a function call.");
   }
 
-  return plannerDecisionSchema.parse(JSON.parse(toolCall.arguments));
+  return plannerDecisionSchema.parse(
+    normalizePlannerDecision(JSON.parse(toolCall.arguments) as Record<string, unknown>),
+  );
+}
+
+async function decideNextActionWithOllama(input: PlannerInput): Promise<PlannerDecision> {
+  const instructions = buildPlannerPrompt(input.workflowGuidance);
+  const prompt = [
+    instructions,
+    "Return JSON only.",
+    "The JSON must have this exact shape:",
+    JSON.stringify(
+      {
+        rationale: "short reason",
+        completionSignal: "continue",
+        action: {
+          kind: "navigate",
+          url: "https://example.com",
+        },
+      },
+      null,
+      2,
+    ),
+    "Allowed action kinds: navigate, click, type, selectOption, pressKey, scroll, wait, getPageSummary, extractText, captureScreenshot, requestApproval, finish.",
+    "For requestApproval include: kind, reason, actionPayload.",
+    "For finish include: kind, summary, optional structuredData.",
+    "Do not wrap the JSON in markdown.",
+    JSON.stringify(
+      {
+        goal: input.goal,
+        pendingApproval: input.pendingApproval,
+        memory: input.memory,
+        observation: input.observation,
+      },
+      null,
+      2,
+    ),
+  ].join("\n\n");
+
+  const raw = await generateWithOllama(prompt);
+  return plannerDecisionSchema.parse(JSON.parse(raw));
 }

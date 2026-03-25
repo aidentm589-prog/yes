@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Car Flip Analyzer</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -85,7 +86,6 @@
               autocomplete="off"
             ></textarea>
           </label>
-          <div id="vehicle-suggestion-box" class="vehicle-suggestion-box hidden-panel" aria-live="polite"></div>
           <p id="vehicle-input-helper" class="form-helper hidden-panel">
             Paste multiple vehicle listings at once. The app will split them into cars, evaluate each one, and rank the best opportunities first.
           </p>

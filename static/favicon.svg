@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0d1526"/>
+      <stop offset="100%" stop-color="#101a2f"/>
+    </linearGradient>
+    <linearGradient id="car" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#55d4ff"/>
+      <stop offset="55%" stop-color="#2eb8ff"/>
+      <stop offset="100%" stop-color="#eaf7ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+  <path d="M40 140c52-2 77-6 102-22 20-13 45-18 74-18 22 0 42 6 54 15-24-1-42 1-57 10-18 11-36 17-71 20-37 4-68 2-102-5z" fill="url(#car)"/>
+  <path d="M52 134c35 0 62-1 81-7 23-8 34-24 57-32 30-11 53-8 76 10-16-3-29-2-41 1-11 3-25 14-42 31-12 13-30 24-61 27 13-8 22-20 30-33-17 6-46 8-100 3z" fill="url(#car)"/>
+  <path d="M132 89c22-18 48-29 79-29 25 0 48 7 66 21-28-7-52-4-73 6-15 7-25 14-37 25-28 1-52-1-79-8 15-1 30-5 44-15z" fill="url(#car)"/>
+  <path d="M66 165c0-18 15-33 34-33s34 15 34 33" fill="none" stroke="#31bcff" stroke-width="10" stroke-linecap="round"/>
+  <path d="M177 165c0-18 15-33 34-33s34 15 34 33" fill="none" stroke="#31bcff" stroke-width="10" stroke-linecap="round"/>
+  <path d="M151 151c20 18 46 25 82 24" fill="none" stroke="#2fbaff" stroke-width="9" stroke-linecap="round" opacity="0.85"/>
+</svg>

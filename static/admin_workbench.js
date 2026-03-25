@@ -159,6 +159,7 @@ function renderIndividual(result) {
   const rows = [
     ["Vehicle", result.vehicle_summary || ""],
     ["Market Value", result.overall_range?.market_value || ""],
+    ["Kelly Blue Book Adjuster", result.overall_range?.kelly_blue_book_adjuster || ""],
     ["Safe Buy Value", result.overall_range?.safe_buy_value || ""],
     ["Expected Resale Value", result.overall_range?.expected_resale_value || ""],
     ["Estimated Profit", result.overall_range?.estimated_profit || ""],
@@ -214,6 +215,7 @@ function renderZippy(result) {
     ["Mileage", details.mileage ? `${Number(details.mileage).toLocaleString()} miles` : "N/A"],
     ["Average Price Of All Comps", values.average_all_comps || ""],
     ["Average Price Of 20 Closest Mileage Comps", values.average_20_closest_mileage_comps || values.average_all_comps || ""],
+    ["Kelly Blue Book Adjuster", values.kelly_blue_book_adjuster || ""],
     ["Very Poor Buy Price", values.very_poor_buy_price || ""],
     ["Good Buy Price", values.good_buy_price || ""],
     ["Excellent Buy Price", values.excellent_buy_price || ""],

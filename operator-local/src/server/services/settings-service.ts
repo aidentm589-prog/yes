@@ -22,8 +22,15 @@ export async function ensureDefaultSettings() {
 
   await settingsRepository.ensureDefaults([
     {
+      key: "planner_provider",
+      value: { value: env.OPERATOR_PLANNER_PROVIDER },
+      description: "Planner provider used by the runtime.",
+    },
+    {
       key: "model",
-      value: { value: env.OPENAI_MODEL },
+      value: {
+        value: env.OPERATOR_PLANNER_PROVIDER === "ollama" ? env.OLLAMA_MODEL : env.OPENAI_MODEL,
+      },
       description: "Default model used by the planner.",
     },
     {

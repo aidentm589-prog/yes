@@ -37,7 +37,7 @@ export async function createRun(prompt: string, requestedMode?: WorkflowMode) {
   const run = await runRepository.createRun({
     goal: prompt,
     workflowMode,
-    model: env.OPENAI_MODEL,
+    model: env.OPERATOR_PLANNER_PROVIDER === "ollama" ? env.OLLAMA_MODEL : env.OPENAI_MODEL,
     reasoningEffort: env.OPENAI_REASONING_EFFORT,
     maxSteps: policySnapshot.maxSteps,
     maxRetries: policySnapshot.maxRetries,

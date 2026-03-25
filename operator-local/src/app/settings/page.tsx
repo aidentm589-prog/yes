@@ -14,8 +14,11 @@ export default async function SettingsPage() {
       <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
         <SectionCard eyebrow="Runtime" title="Environment">
           <div className="space-y-3 text-sm text-slate-700">
+            <p>Planner provider: {env.OPERATOR_PLANNER_PROVIDER}</p>
             <p>OpenAI configured: {env.OPENAI_API_KEY ? "Yes" : "No"}</p>
             <p>Model: {env.OPENAI_MODEL}</p>
+            <p>Ollama model: {env.OLLAMA_MODEL}</p>
+            <p>Ollama base URL: {env.OLLAMA_BASE_URL}</p>
             <p>Reasoning effort: {env.OPENAI_REASONING_EFFORT}</p>
             <p>Storage dir: {env.OPERATOR_STORAGE_DIR}</p>
             <p>Headless browser: {env.PLAYWRIGHT_HEADLESS ? "true" : "false"}</p>

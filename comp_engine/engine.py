@@ -189,9 +189,11 @@ class VehicleCompsEngine:
         avg_all = self.calculate_market_value(valid)
         avg_closest = self._average_price_of_closest_mileage(valid, query.mileage, 20) if query.mileage else avg_all
         anchor = avg_closest or avg_all
+        kbb_adjuster = self._build_kbb_adjuster(avg_all, query.mileage, valid)
         zippy_values = {
             "average_all_comps": money(avg_all),
             "average_20_closest_mileage_comps": money(avg_closest) if avg_closest else "",
+            "kelly_blue_book_adjuster": kbb_adjuster["value"],
             "very_poor_buy_price": money(anchor * 0.55) if anchor else "",
             "good_buy_price": money(anchor * 0.72) if anchor else "",
             "excellent_buy_price": money(anchor * 0.84) if anchor else "",
@@ -290,11 +292,13 @@ class VehicleCompsEngine:
         )[:10]
         closest_average = self.calculate_expected_resale_value(query.mileage or 0, valid)
         clean_title_benchmark = self.calculate_market_value(included)
+        kbb_adjuster = self._build_kbb_adjuster(clean_title_benchmark, query.mileage, included)
         personal_value = {
             "estimated_personal_market_value": money(closest_average),
             "average_price_of_10_closest_mileage_comps": money(closest_average),
             "comp_count_used": len(closest),
             "clean_title_benchmark": money(clean_title_benchmark) if clean_title_benchmark else "",
+            "kelly_blue_book_adjuster": kbb_adjuster["value"],
         }
         response = {
             "evaluation_engine": "personal",
@@ -810,6 +814,7 @@ class VehicleCompsEngine:
                 safe_buy_value,
                 expected_resale_value,
                 estimated_profit,
+                query.mileage,
                 title_adjustment.get("rebuilt_title_average", ""),
             ),
             "sample_listings": self._serialize_sample_listings(listings[:8]),
@@ -1311,6 +1316,7 @@ class VehicleCompsEngine:
             "vehicle_name": vehicle_name,
             "listed_price": listed_price_text,
             "market_value": overall.get("market_value", ""),
+            "kelly_blue_book_adjuster": overall.get("kelly_blue_book_adjuster", ""),
             "safe_buy_value": overall.get("safe_buy_value", ""),
             "expected_resale_value": overall.get("expected_resale_value", "") or resale_range.get("low", ""),
             "estimated_profit": overall.get("estimated_profit", "") or result.get("gross_spread_estimate", ""),
@@ -1609,6 +1615,7 @@ class VehicleCompsEngine:
         safe_buy_value: float,
         expected_resale_value: float,
         estimated_profit: float,
+        target_mileage: int | None = None,
         imperfect_title_value: str = "",
     ) -> dict[str, Any]:
         ranges: list[tuple[float, float]] = []
@@ -1626,6 +1633,12 @@ class VehicleCompsEngine:
         result["safe_buy_value"] = money(safe_buy_value)
         result["expected_resale_value"] = money(expected_resale_value)
         result["estimated_profit"] = money(estimated_profit)
+        kbb_adjuster = self._build_kbb_adjuster(
+            market_value,
+            target_mileage if target_mileage is not None else self._target_mileage_from_listings(listings),
+            listings,
+        )
+        result["kelly_blue_book_adjuster"] = kbb_adjuster["value"]
         if imperfect_title_value:
             result["imperfect_title_value"] = imperfect_title_value
         if ranges:
@@ -1688,6 +1701,42 @@ class VehicleCompsEngine:
         if not valid_prices:
             return 0.0
         return sum(valid_prices) / len(valid_prices)
+
+    def _target_mileage_from_listings(self, listings: list[NormalizedListing]) -> int | None:
+        valid_mileages = [int(listing.mileage) for listing in listings if listing.mileage is not None]
+        if not valid_mileages:
+            return None
+        return int(round(sum(valid_mileages) / len(valid_mileages)))
+
+    def _build_kbb_adjuster(
+        self,
+        market_value: float,
+        target_mileage: int | None,
+        comps: list[NormalizedListing],
+    ) -> dict[str, Any]:
+        if not market_value:
+            return {"value": "", "percent": 0.0}
+
+        valid_mileages = sorted(int(listing.mileage) for listing in comps if listing.mileage is not None)
+        if target_mileage is None or not valid_mileages:
+            percent = 0.21
+        else:
+            target = int(target_mileage)
+            if len(valid_mileages) >= 2 and target >= valid_mileages[-2]:
+                percent = 0.24
+            elif len(valid_mileages) >= 2 and target <= valid_mileages[1]:
+                percent = 0.18
+            else:
+                rank = sum(1 for mileage in valid_mileages if mileage <= target)
+                denominator = max(len(valid_mileages) - 1, 1)
+                percentile = min(max((rank - 1) / denominator, 0.0), 1.0)
+                percent = 0.18 + (0.06 * percentile)
+
+        adjusted_value = market_value * (1.0 - percent)
+        return {
+            "value": money(adjusted_value),
+            "percent": round(percent * 100, 1),
+        }
 
     def calculateSafeBuyValue(self, comps: list[NormalizedListing]) -> float:
         return self.calculate_safe_buy_value(comps)

@@ -1,9 +1,12 @@
 import { z } from "zod";
 
 const envSchema = z.object({
+  OPERATOR_PLANNER_PROVIDER: z.enum(["openai", "ollama"]).default("ollama"),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().default("gpt-5.2"),
   OPENAI_REASONING_EFFORT: z.enum(["low", "medium", "high"]).default("medium"),
+  OLLAMA_BASE_URL: z.string().url().default("http://127.0.0.1:11434"),
+  OLLAMA_MODEL: z.string().default("qwen2.5:7b-instruct"),
   DATABASE_URL: z.string().min(1).default("file:./prisma/dev.db"),
   PLAYWRIGHT_HEADLESS: z
     .string()

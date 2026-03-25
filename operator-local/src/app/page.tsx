@@ -36,6 +36,12 @@ export default async function HomePage() {
               <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Settings loaded</p>
               <p className="mt-3 text-xl font-semibold">{settings.length}</p>
             </div>
+            <div className="rounded-[1.4rem] bg-[#dfe6f6] px-5 py-4 text-slate-900 md:col-span-3">
+              <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Planner provider</p>
+              <p className="mt-3 text-xl font-semibold">
+                {env.OPERATOR_PLANNER_PROVIDER === "ollama" ? `${env.OPERATOR_PLANNER_PROVIDER} · ${env.OLLAMA_MODEL}` : `${env.OPERATOR_PLANNER_PROVIDER} · ${env.OPENAI_MODEL}`}
+              </p>
+            </div>
           </div>
           <TaskComposer />
         </SectionCard>
