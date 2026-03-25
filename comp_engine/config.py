@@ -40,12 +40,16 @@ def _env_int(name: str, default: int) -> int:
 @dataclass(slots=True)
 class EngineConfig:
     cache_ttl_seconds: int
+    source_cache_ttl_seconds: int
+    source_failure_cooldown_seconds: int
     http_timeout_seconds: int
     http_retry_count: int
     max_source_workers: int
     max_source_results: int
     max_detail_enrichment: int
     max_vin_decodes: int
+    fast_max_detail_enrichment: int
+    fast_max_vin_decodes: int
     personal_fast_path: bool
     sqlite_path: Path
     enable_craigslist: bool
@@ -80,12 +84,16 @@ class EngineConfig:
         marketcheck_enabled = _env_flag("COMP_ENABLE_MARKETCHECK", False) and bool(marketcheck_api_key)
         return cls(
             cache_ttl_seconds=_env_int("COMP_CACHE_TTL_SECONDS", 1800),
+            source_cache_ttl_seconds=_env_int("COMP_SOURCE_CACHE_TTL_SECONDS", 900),
+            source_failure_cooldown_seconds=_env_int("COMP_SOURCE_FAILURE_COOLDOWN_SECONDS", 600),
             http_timeout_seconds=_env_int("COMP_HTTP_TIMEOUT_SECONDS", 8),
             http_retry_count=_env_int("COMP_HTTP_RETRY_COUNT", 1),
             max_source_workers=_env_int("COMP_MAX_SOURCE_WORKERS", 6),
             max_source_results=_env_int("COMP_MAX_SOURCE_RESULTS", 80),
             max_detail_enrichment=_env_int("COMP_MAX_DETAIL_ENRICHMENT", 8),
             max_vin_decodes=_env_int("COMP_MAX_VIN_DECODES", 8),
+            fast_max_detail_enrichment=_env_int("COMP_FAST_MAX_DETAIL_ENRICHMENT", 4),
+            fast_max_vin_decodes=_env_int("COMP_FAST_MAX_VIN_DECODES", 2),
             personal_fast_path=_env_flag("COMP_PERSONAL_FAST_PATH", True),
             sqlite_path=sqlite_path,
             enable_craigslist=_env_flag("COMP_ENABLE_CRAIGSLIST", True),

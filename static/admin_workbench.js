@@ -159,6 +159,7 @@ function renderIndividual(result) {
   const rows = [
     ["Vehicle", result.vehicle_summary || ""],
     ["Market Value", result.overall_range?.market_value || ""],
+    ["Buy Range", result.overall_range?.buy_range ? `${result.overall_range.buy_range.low || ""} - ${result.overall_range.buy_range.high || ""}` : ""],
     ["Craigslist Average", result.craigslist_average || ""],
     ["Full Price Range", result.overall_range?.full_price_range || ""],
     ["Safe Buy Value", result.overall_range?.safe_buy_value || ""],
@@ -190,6 +191,7 @@ function renderBulk(items = []) {
       </div>
       <div class="portfolio-section-grid">
         <div class="range-row"><span>Market</span><strong>${escapeHtml(item.market_value || "")}</strong></div>
+        <div class="range-row"><span>Buy Range</span><strong>${escapeHtml(item.buy_range || "")}</strong></div>
         <div class="range-row"><span>Safe Buy</span><strong>${escapeHtml(item.safe_buy_value || "")}</strong></div>
         <div class="range-row"><span>Resale</span><strong>${escapeHtml(item.expected_resale_value || "")}</strong></div>
         <div class="range-row"><span>Profit</span><strong>${escapeHtml(item.estimated_profit || "")}</strong></div>
@@ -216,6 +218,7 @@ function renderZippy(result) {
     ["Mileage", details.mileage ? `${Number(details.mileage).toLocaleString()} miles` : "N/A"],
     ["Average Price Of All Comps", values.average_all_comps || ""],
     ["Average Price Of 20 Closest Mileage Comps", values.average_20_closest_mileage_comps || values.average_all_comps || ""],
+    ["Buy Range", values.buy_range ? `${values.buy_range.low || ""} - ${values.buy_range.high || ""}` : ""],
     ["Craigslist Average", result.craigslist_average || values.craigslist_average || ""],
     ["Full Price Range", values.full_price_range || ""],
     ["Very Poor Buy Price", values.very_poor_buy_price || ""],

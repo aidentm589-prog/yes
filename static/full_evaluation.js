@@ -538,7 +538,6 @@ async function loadEvaluation() {
       vehicle_input: vehicleInput,
       mileage,
       rebuilt_title: rebuiltTitle,
-      force_refresh: true,
     }),
   });
   const payload = await response.json();

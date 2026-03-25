@@ -78,6 +78,8 @@
   </div>
   <nav id="site-menu-panel" class="site-menu-panel hidden-panel" aria-label="Site menu">
     <a class="site-menu-link" href="{{ url_for('index') }}">Evaluation Service</a>
+    <a class="site-menu-link" href="{{ url_for('car_finder') }}">Car Finder</a>
+    <a class="site-menu-link" href="{{ url_for('lowest_example_finder') }}">Lowest Example Finder</a>
     <a class="site-menu-link" href="{{ url_for('subscriptions') }}">Subscriptions</a>
     <a class="site-menu-link" href="{{ url_for('credits') }}">Buy Credits</a>
     {% if auth_user %}

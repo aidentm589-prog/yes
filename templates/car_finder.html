@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Car Finder | Car Flip Analyzer</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body data-page="car-finder">
+    {% include "_top_bar.html" %}
+    <main class="shell">
+      <section class="composer panel">
+        <form id="lookup-form" class="composer-form">
+          <input type="hidden" id="evaluation-engine" name="evaluation_engine" value="car_finder" />
+          <select id="car-finder-evaluation-mode" class="visually-hidden" name="car_finder_evaluation_mode">
+            <option value="finder_v1" selected>Finder V1</option>
+          </select>
+
+          <section class="choice-shell">
+            <div class="choice-shell-head">
+              <span class="input-label-text">Car Finder</span>
+              <small>Search all active sources, rank the steals first, and scan real listings instead of evaluating one car.</small>
+            </div>
+          </section>
+
+          <div id="evaluation-config-shell">
+            <label class="full">
+              <span id="vehicle-input-label" class="input-label-text">Car Input</span>
+              <textarea
+                id="vehicle-input"
+                name="vehicle_input"
+                rows="3"
+                placeholder="Year make model trim..."
+                autocomplete="off"
+              ></textarea>
+            </label>
+
+            <label id="mileage-field" class="full listing-price-field">
+              <span id="mileage-label" class="input-label-text">Ideal Mileage</span>
+              <input
+                id="vehicle-mileage"
+                name="mileage"
+                type="number"
+                min="0"
+                step="1"
+                inputmode="numeric"
+                placeholder="Ideal Mileage (Optional)"
+              />
+            </label>
+            <p class="form-helper">
+              Entering <strong>20,000</strong> makes Car Finder work around roughly <strong>15,000 to 25,000 miles</strong>.
+            </p>
+
+            <div class="actions">
+              <button type="submit" class="button">Find Deals</button>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel loading-panel hidden-panel" id="loading-panel" aria-live="polite">
+        <div class="loading-shell">
+          <div class="loading-orbital">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <p id="loading-kicker" class="deal-kicker loading-kicker">Scanning the market</p>
+          <h2 id="loading-title">Ranking the Best Deals</h2>
+          <p id="loading-message" class="loading-copy">
+            Searching active listings, cleaning matches, and ranking the strongest deals first.
+          </p>
+          <div class="loading-progress-wrap" aria-hidden="true">
+            <div class="loading-progress-bar">
+              <span id="loading-progress-fill" class="loading-progress-fill"></span>
+            </div>
+            <p id="loading-progress" class="loading-progress">0%</p>
+          </div>
+          <div id="loading-phase-pills" class="loading-phase-pills">
+            <span class="loading-phase-pill is-active">Searching sources</span>
+            <span class="loading-phase-pill">Cleaning matches</span>
+            <span class="loading-phase-pill">Scoring steals</span>
+            <span class="loading-phase-pill">Packaging deals</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel status-panel hidden-panel" id="results-status-panel">
+        <div class="status-head">
+          <strong>Car Finder Status</strong>
+          <span id="session-badge">Ready</span>
+        </div>
+        <p id="status-message">Enter a car and Car Finder will rank the best current deals.</p>
+        <ul id="status-notes" class="notes"></ul>
+      </section>
+
+      <section class="results-grid hidden-panel" id="results-grid">
+        <article class="panel stat-panel">
+          <div class="results-head">
+            <strong>Vehicle</strong>
+          </div>
+          <div id="source-summary" class="muted">No Car Finder search run yet.</div>
+        </article>
+
+        <article class="panel stat-panel">
+          <div class="results-head">
+            <strong>Range</strong>
+          </div>
+          <div id="overall-range" class="range-list muted">No values yet.</div>
+        </article>
+      </section>
+
+      <section class="panel hidden-panel" id="car-finder-top-deals-panel">
+        <div class="results-head">
+          <strong>Top Deals Ranked</strong>
+        </div>
+        <div id="car-finder-top-deals-grid" class="car-finder-top-deals-grid muted">
+          Top-ranked steals will appear here after a Car Finder search.
+        </div>
+      </section>
+
+      <section class="panel hidden-panel" id="results-comps-panel">
+        <div class="results-head">
+          <strong>Comparable Listings</strong>
+        </div>
+        <div id="comps-toolbar" class="comps-toolbar hidden-panel">
+          <span id="comps-count-label" class="muted">Showing 0 of 0 comps</span>
+          <div class="comps-toolbar-actions">
+            <label class="sort-select-wrap">
+              <span>Source</span>
+              <select id="comp-source-select">
+                <option value="" selected>All Sources</option>
+              </select>
+            </label>
+            <label class="sort-select-wrap">
+              <span>Sort</span>
+              <select id="comp-sort-select">
+                <option value="best_deals" selected>Best Deals</option>
+                <option value="closest_to_me">Closest To Me</option>
+                <option value="price_low">Price: Low → High</option>
+                <option value="price_high">Price: High → Low</option>
+                <option value="closest_mileage">Closest Mileage</option>
+                <option value="mileage_low">Mileage: Low → High</option>
+                <option value="mileage_high">Mileage: High → Low</option>
+              </select>
+            </label>
+            <label id="comp-proximity-zip-wrap" class="sort-select-wrap hidden-panel">
+              <span>ZIP Code</span>
+              <input
+                id="comp-proximity-zip"
+                type="text"
+                maxlength="5"
+                inputmode="numeric"
+                placeholder="Enter ZIP"
+              />
+            </label>
+            <button id="show-all-comps" type="button" class="ghost-button hidden-panel">
+              Show All
+            </button>
+          </div>
+        </div>
+        <div id="sample-listings" class="sample-listings muted">
+          Ranked active listings will appear here after a Car Finder search.
+        </div>
+      </section>
+
+      <section class="panel hidden-panel" id="results-conditions-panel">
+        <div class="results-head">
+          <strong>Condition Sweep</strong>
+        </div>
+        <div id="condition-values" class="condition-values muted">
+          No condition values were returned.
+        </div>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='nav.js') }}"></script>
+    <script src="{{ url_for('static', filename='software_chat.js') }}"></script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

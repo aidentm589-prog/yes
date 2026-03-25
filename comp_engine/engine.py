@@ -24,6 +24,7 @@ from .scoring import (
     money,
     percentile,
     score_listing,
+    trim_similarity,
     weighted_median,
 )
 from .sources import (
@@ -43,6 +44,9 @@ from .vin_decode import NHTSAVinDecoder
 
 LOGGER = logging.getLogger(__name__)
 
+FAST_SOURCE_KEYS = ("craigslist", "autodev", "marketcheck", "manual_import", "custom_source")
+BALANCED_SOURCE_KEYS = ("craigslist", "autodev", "marketcheck", "ebay_motors", "manual_import", "custom_source")
+
 
 class VehicleCompsEngine:
     def __init__(self, config: EngineConfig | None = None) -> None:
@@ -56,11 +60,16 @@ class VehicleCompsEngine:
         self.vin_decoder = NHTSAVinDecoder(self.http_client)
         self.llm = LlmClient(self.http_client)
         self.detailed_reports = DetailedVehicleReportService(self.http_client)
+        self._zip_lookup_cache: dict[str, dict[str, Any]] = {}
         self.adapters = self._build_adapters()
 
     def evaluate(self, payload: dict[str, Any]) -> dict[str, Any]:
         payload = dict(payload)
         engine_type = str(payload.get("evaluation_engine", "resell") or "resell").strip().lower()
+        if engine_type == "car_finder":
+            return self._evaluate_car_finder(payload)
+        if engine_type == "lowest_example_finder":
+            return self._evaluate_lowest_example_finder(payload)
         if engine_type == "personal":
             return self._evaluate_personal_value(payload)
         mode = str(payload.get("evaluation_mode", "")).strip().lower()
@@ -69,6 +78,37 @@ class VehicleCompsEngine:
         if mode == "zippy":
             return self._evaluate_zippy(payload)
         return self._evaluate_single(payload)
+
+    def lookup_zip_coordinates(self, zip_code: str) -> dict[str, Any]:
+        normalized = "".join(ch for ch in str(zip_code or "") if ch.isdigit())[:5]
+        if len(normalized) != 5:
+            raise ValueError("Enter a valid 5-digit ZIP code.")
+        cached = self._zip_lookup_cache.get(normalized)
+        if cached:
+            return cached
+        payload = self.http_client.get_json(
+            f"https://api.zippopotam.us/us/{normalized}",
+            source_key="zip_lookup",
+            timeout_seconds=6,
+        )
+        places = payload.get("places") or []
+        if not places:
+            raise RuntimeError("ZIP lookup returned no location data.")
+        primary = places[0] or {}
+        try:
+            latitude = float(primary.get("latitude"))
+            longitude = float(primary.get("longitude"))
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("ZIP lookup returned invalid coordinates.") from exc
+        result = {
+            "zip_code": normalized,
+            "city": str(primary.get("place name") or "").strip(),
+            "state": str(primary.get("state abbreviation") or "").strip().upper(),
+            "latitude": latitude,
+            "longitude": longitude,
+        }
+        self._zip_lookup_cache[normalized] = result
+        return result
 
     def _evaluate_single(self, payload: dict[str, Any]) -> dict[str, Any]:
         payload = dict(payload)
@@ -106,7 +146,17 @@ class VehicleCompsEngine:
             if cached:
                 return cached
 
-        source_results = self._run_sources(query, preferred_keys=self._preferred_source_keys_for_query(vin_only_lookup))
+        run_profile = "bulk" if payload.get("bulk_run") else "individual"
+        source_results = self._run_sources(
+            query,
+            preferred_keys=self._preferred_source_keys_for_run(
+                "resell",
+                run_profile,
+                vin_only_lookup=vin_only_lookup,
+                include_detailed_report=include_detailed_report,
+            ),
+            force_refresh=bool(payload.get("force_refresh")),
+        )
         deduped = self._dedupe_listings(
             [
                 listing
@@ -116,8 +166,10 @@ class VehicleCompsEngine:
         )
         deduped = self._decode_listing_vins(query, deduped)
         included, excluded = self._score_and_filter(query, deduped)
-        included = self._enrich_top_listings(query, included)
-        included = self._decode_listing_vins(query, included)
+        enrichment_limit = None if include_detailed_report else self.config.fast_max_detail_enrichment
+        included = self._enrich_top_listings(query, included, limit=enrichment_limit)
+        decode_limit = None if include_detailed_report else self.config.fast_max_vin_decodes
+        included = self._decode_listing_vins(query, included, limit=decode_limit)
         included, more_excluded = self._score_and_filter(query, included)
         excluded.extend(more_excluded)
 
@@ -130,6 +182,152 @@ class VehicleCompsEngine:
         response = self._build_success_response(query, source_results, included, excluded)
         if include_detailed_report:
             response["detailed_vehicle_report"] = self.detailed_reports.get_detailed_vehicle_report(query, response, included)
+        if use_cache:
+            self.repository.set_cache_json(cache_key, response, ttl_seconds=self.config.cache_ttl_seconds)
+        return response
+
+    def _evaluate_car_finder(self, payload: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(payload)
+        vehicle_input = str(payload.get("vehicle_input", "")).strip()
+        if vehicle_input:
+            augmented_input, extracted_pages = self.link_extractor.augment_vehicle_input(vehicle_input)
+            payload["vehicle_input"] = augmented_input
+            if extracted_pages and not payload.get("asking_price"):
+                for extracted in extracted_pages:
+                    asking_price = extracted.get("asking_price")
+                    if asking_price:
+                        payload["asking_price"] = asking_price
+                        break
+        query = parse_vehicle_query(payload)
+        self._apply_vin_decode(query)
+        enabled_source_keys = [adapter.key for adapter in self.adapters if adapter.is_enabled()]
+        cache_key = f"{query.cache_key(enabled_source_keys)}:car_finder:v1"
+        use_cache = not payload.get("force_refresh")
+
+        if not (query.year and query.make and query.model):
+            return {
+                "evaluation_engine": "car_finder",
+                "mode": "finder_v1",
+                "status": "needs_more_data",
+                "provider": "Multi-source vehicle comps engine",
+                "vehicle_summary": self._vehicle_summary(query),
+                "parsed_details": self._query_dict(query),
+                "market_snapshot": {},
+                "overall_range": {},
+                "comparable_count": 0,
+                "matched_comps": [],
+                "sample_listings": [],
+                "top_deals": [],
+                "source_breakdown": [],
+                "source_health": [adapter.health_check() for adapter in self.adapters],
+                "default_sort": "best_deals",
+                "message": "Please include at least the year, make, and model to run Car Finder.",
+                "assumptions": self._car_finder_assumptions(query, enabled_source_keys),
+            }
+
+        if use_cache:
+            cached = self.repository.get_cache_json(cache_key)
+            if cached:
+                return cached
+
+        source_results = self._run_sources(
+            query,
+            preferred_keys=self._preferred_source_keys_for_run("car_finder", "finder_v1"),
+            force_refresh=bool(payload.get("force_refresh")),
+        )
+        ranked_listings = self._gather_car_finder_comps(query, source_results)
+        market_snapshot = self._build_car_finder_market_snapshot(ranked_listings)
+        response = {
+            "evaluation_engine": "car_finder",
+            "mode": "finder_v1",
+            "status": "complete",
+            "provider": "Multi-source vehicle comps engine",
+            "vehicle_summary": self._vehicle_summary(query),
+            "parsed_details": self._query_dict(query),
+            "market_snapshot": market_snapshot,
+            "overall_range": market_snapshot,
+            "comparable_count": len(ranked_listings),
+            "matched_comps": [self._listing_public_dict(listing) for listing in ranked_listings],
+            "sample_listings": self._serialize_sample_listings(ranked_listings[:20]),
+            "top_deals": [self._listing_public_dict(listing) for listing in self._get_top_deals(ranked_listings)],
+            "source_breakdown": self._source_breakdown(ranked_listings),
+            "source_health": [result.to_health_dict() for result in source_results],
+            "default_sort": "best_deals",
+            "message": self._car_finder_message(ranked_listings, source_results),
+            "assumptions": self._car_finder_assumptions(query, enabled_source_keys),
+        }
+        if use_cache:
+            self.repository.set_cache_json(cache_key, response, ttl_seconds=self.config.cache_ttl_seconds)
+        return response
+
+    def _evaluate_lowest_example_finder(self, payload: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(payload)
+        vehicle_input = str(payload.get("vehicle_input", "")).strip()
+        if vehicle_input:
+            augmented_input, extracted_pages = self.link_extractor.augment_vehicle_input(vehicle_input)
+            payload["vehicle_input"] = augmented_input
+            if extracted_pages and not payload.get("asking_price"):
+                for extracted in extracted_pages:
+                    asking_price = extracted.get("asking_price")
+                    if asking_price:
+                        payload["asking_price"] = asking_price
+                        break
+        query = parse_vehicle_query(payload)
+        self._apply_vin_decode(query)
+        enabled_source_keys = [adapter.key for adapter in self.adapters if adapter.is_enabled()]
+        cache_key = f"{query.cache_key(enabled_source_keys)}:lowest_example_finder:v1"
+        use_cache = not payload.get("force_refresh")
+
+        if not (query.year and query.make and query.model):
+            return {
+                "evaluation_engine": "lowest_example_finder",
+                "mode": "scanner_v1",
+                "status": "needs_more_data",
+                "provider": "Multi-source vehicle comps engine",
+                "vehicle_summary": self._vehicle_summary(query),
+                "parsed_details": self._query_dict(query),
+                "market_snapshot": {},
+                "overall_range": {},
+                "comparable_count": 0,
+                "matched_comps": [],
+                "sample_listings": [],
+                "source_breakdown": [],
+                "source_health": [adapter.health_check() for adapter in self.adapters],
+                "default_sort": "mileage_low",
+                "message": "Please include at least the year, make, and model to find the lowest-mileage examples.",
+                "assumptions": self._lowest_example_assumptions(query, enabled_source_keys),
+            }
+
+        if use_cache:
+            cached = self.repository.get_cache_json(cache_key)
+            if cached:
+                return cached
+
+        source_results = self._run_sources(
+            query,
+            preferred_keys=self._preferred_source_keys_for_run("lowest_example_finder", "scanner_v1"),
+            force_refresh=bool(payload.get("force_refresh")),
+        )
+        ranked_listings = self._gather_lowest_example_finder_comps(query, source_results)
+        market_snapshot = self._build_lowest_example_market_snapshot(ranked_listings, query)
+        response = {
+            "evaluation_engine": "lowest_example_finder",
+            "mode": "scanner_v1",
+            "status": "complete",
+            "provider": "Multi-source vehicle comps engine",
+            "vehicle_summary": self._vehicle_summary(query),
+            "parsed_details": self._query_dict(query),
+            "market_snapshot": market_snapshot,
+            "overall_range": market_snapshot,
+            "comparable_count": len(ranked_listings),
+            "matched_comps": [self._listing_public_dict(listing) for listing in ranked_listings],
+            "sample_listings": self._serialize_sample_listings(ranked_listings[:20]),
+            "source_breakdown": self._source_breakdown(ranked_listings),
+            "source_health": [result.to_health_dict() for result in source_results],
+            "default_sort": "mileage_low",
+            "message": self._lowest_example_message(ranked_listings, query),
+            "assumptions": self._lowest_example_assumptions(query, enabled_source_keys),
+        }
         if use_cache:
             self.repository.set_cache_json(cache_key, response, ttl_seconds=self.config.cache_ttl_seconds)
         return response
@@ -150,6 +348,8 @@ class VehicleCompsEngine:
         query = parse_vehicle_query(payload)
         self._apply_vin_decode(query)
         enabled_source_keys = [adapter.key for adapter in self.adapters if adapter.is_enabled()]
+        cache_key = f"{query.cache_key(enabled_source_keys)}:zippy:v2"
+        use_cache = not payload.get("force_refresh")
 
         if not (query.year and query.make and query.model):
             return {
@@ -166,7 +366,16 @@ class VehicleCompsEngine:
                 "assumptions": self._assumptions(query, enabled_source_keys),
             }
 
-        source_results = self._run_sources(query, preferred_keys=self._preferred_source_keys_for_query(vin_only_lookup))
+        if use_cache:
+            cached = self.repository.get_cache_json(cache_key)
+            if cached:
+                return cached
+
+        source_results = self._run_sources(
+            query,
+            preferred_keys=self._preferred_source_keys_for_run("resell", "zippy", vin_only_lookup=vin_only_lookup),
+            force_refresh=bool(payload.get("force_refresh")),
+        )
         deduped = self._dedupe_listings([
             listing
             for result in source_results
@@ -177,7 +386,7 @@ class VehicleCompsEngine:
             if self._listing_market_price(listing) is not None
         ]
         if not valid:
-            return {
+            response = {
                 "mode": "zippy",
                 "status": "needs_more_data",
                 "provider": "Multi-source vehicle comps engine",
@@ -190,6 +399,9 @@ class VehicleCompsEngine:
                 "message": "Zippy did not find enough priced comps yet.",
                 "assumptions": self._assumptions(query, enabled_source_keys),
             }
+            if use_cache:
+                self.repository.set_cache_json(cache_key, response, ttl_seconds=self.config.cache_ttl_seconds)
+            return response
 
         avg_all = self.calculate_market_value(valid)
         avg_closest = self._average_price_of_closest_mileage(valid, query.mileage, 20) if query.mileage else avg_all
@@ -199,13 +411,14 @@ class VehicleCompsEngine:
         zippy_values = {
             "average_all_comps": money(avg_all),
             "average_20_closest_mileage_comps": money(avg_closest) if avg_closest else "",
+            "buy_range": self._build_buy_range(valid, query.mileage),
             "craigslist_average": craigslist_average,
             "full_price_range": full_price_range,
             "very_poor_buy_price": money(anchor * 0.55) if anchor else "",
             "good_buy_price": money(anchor * 0.72) if anchor else "",
             "excellent_buy_price": money(anchor * 0.84) if anchor else "",
         }
-        return {
+        response = {
             "evaluation_engine": "resell",
             "mode": "zippy",
             "status": "complete",
@@ -219,6 +432,9 @@ class VehicleCompsEngine:
             "message": "Zippy scraped comps, averaged the market, and generated fast buy bands.",
             "assumptions": self._assumptions(query, enabled_source_keys),
         }
+        if use_cache:
+            self.repository.set_cache_json(cache_key, response, ttl_seconds=self.config.cache_ttl_seconds)
+        return response
 
     def _evaluate_personal_value(self, payload: dict[str, Any]) -> dict[str, Any]:
         payload = dict(payload)
@@ -239,7 +455,7 @@ class VehicleCompsEngine:
         query = parse_vehicle_query(payload)
         self._apply_vin_decode(query)
         enabled_source_keys = [adapter.key for adapter in self.adapters if adapter.is_enabled()]
-        cache_key = f"{query.cache_key(enabled_source_keys)}:personal:v2"
+        cache_key = f"{query.cache_key(enabled_source_keys)}:personal:v3"
         use_cache = not include_detailed_report and not payload.get("force_refresh")
 
         if not query.minimum_details_present():
@@ -265,13 +481,20 @@ class VehicleCompsEngine:
             if cached:
                 return cached
 
-        source_results = self._run_sources(query, preferred_keys=self._preferred_source_keys_for_query(vin_only_lookup))
+        source_results = self._run_sources(
+            query,
+            preferred_keys=self._preferred_source_keys_for_run("personal", "beta_v1", vin_only_lookup=vin_only_lookup),
+            force_refresh=bool(payload.get("force_refresh")),
+        )
         deduped = self._dedupe_listings([
             listing
             for result in source_results
             for listing in result.normalized_listings
         ])
-        deduped = self._decode_listing_vins(query, deduped)
+        if include_detailed_report or not self.config.personal_fast_path:
+            deduped = self._decode_listing_vins(query, deduped)
+        elif query.trim or query.vin or query.vin_decoded_used:
+            deduped = self._decode_listing_vins(query, deduped, limit=self.config.fast_max_vin_decodes)
         analyzed_all = self._annotate_personal_market_listings(query, deduped)
         if not self.config.personal_fast_path:
             analyzed_all = self._enrich_top_listings(query, analyzed_all)
@@ -304,6 +527,8 @@ class VehicleCompsEngine:
                     "full_price_range": self._build_full_price_range(fallback_priced),
                 },
                 "comparable_count": len(fallback_priced),
+                "closest_mileage_summary": self._build_closest_mileage_summary(fallback_priced),
+                "closest_mileage_comps": [self._listing_public_dict(listing) for listing in fallback_priced[:10]],
                 "matched_comps": [self._listing_public_dict(listing) for listing in fallback_priced[:10]],
                 "sample_listings": self._serialize_sample_listings(fallback_priced[:10]),
                 "source_breakdown": self._source_breakdown(fallback_priced),
@@ -340,6 +565,8 @@ class VehicleCompsEngine:
             "parsed_details": self._query_dict(query),
             "personal_value": personal_value,
             "comparable_count": len(analyzed_all),
+            "closest_mileage_summary": self._build_closest_mileage_summary(closest),
+            "closest_mileage_comps": [self._listing_public_dict(listing) for listing in closest],
             "matched_comps": [self._listing_public_dict(listing) for listing in closest],
             "sample_listings": self._serialize_sample_listings(closest[:10]),
             "source_breakdown": self._source_breakdown(analyzed_all),
@@ -530,7 +757,13 @@ class VehicleCompsEngine:
                 "highlights": [item for item in highlights if item][:4],
             }
 
-    def _run_sources(self, query: VehicleQuery, preferred_keys: list[str] | None = None) -> list[SourceRunResult]:
+    def _run_sources(
+        self,
+        query: VehicleQuery,
+        preferred_keys: list[str] | None = None,
+        *,
+        force_refresh: bool = False,
+    ) -> list[SourceRunResult]:
         source_results: list[SourceRunResult] = []
         preferred_key_set = set(preferred_keys or [])
         considered_adapters = [
@@ -552,7 +785,7 @@ class VehicleCompsEngine:
 
         with ThreadPoolExecutor(max_workers=min(self.config.max_source_workers, len(enabled_adapters) or 1)) as pool:
             futures = {
-                pool.submit(self._run_single_source, adapter, query): adapter
+                pool.submit(self._run_single_source, adapter, query, force_refresh=force_refresh): adapter
                 for adapter in enabled_adapters
             }
             for future in as_completed(futures):
@@ -561,10 +794,31 @@ class VehicleCompsEngine:
         source_results.sort(key=lambda result: result.metadata.label.lower())
         return source_results
 
-    def _preferred_source_keys_for_query(self, vin_only_lookup: bool) -> list[str] | None:
-        if not vin_only_lookup:
-            return None
-        return ["autodev", "marketcheck"]
+    def _preferred_source_keys_for_run(
+        self,
+        engine_type: str,
+        mode: str = "",
+        *,
+        vin_only_lookup: bool = False,
+        include_detailed_report: bool = False,
+    ) -> list[str] | None:
+        enabled_keys = [adapter.key for adapter in self.adapters if adapter.is_enabled()]
+        if vin_only_lookup:
+            preferred = ["autodev", "marketcheck"]
+        elif engine_type == "car_finder":
+            preferred = list(FAST_SOURCE_KEYS)
+        elif engine_type == "lowest_example_finder":
+            preferred = list(FAST_SOURCE_KEYS)
+        elif engine_type == "personal":
+            preferred = list(FAST_SOURCE_KEYS)
+        elif mode in {"zippy", "bulk"}:
+            preferred = list(FAST_SOURCE_KEYS)
+        elif engine_type == "resell" and include_detailed_report:
+            preferred = list(BALANCED_SOURCE_KEYS)
+        else:
+            preferred = list(BALANCED_SOURCE_KEYS)
+        chosen = [key for key in preferred if key in enabled_keys]
+        return chosen or None
 
     def _is_vin_only_lookup(self, payload: dict[str, Any]) -> bool:
         vehicle_input = str(payload.get("vehicle_input", "") or "").strip().upper()
@@ -578,8 +832,71 @@ class VehicleCompsEngine:
             return no_structured_identity and not raw_without_vin
         return bool(vehicle_input and self.vin_decoder.is_valid_vin(vehicle_input))
 
-    def _run_single_source(self, adapter: Any, query: VehicleQuery) -> SourceRunResult:
+    def _source_cache_key(self, query: VehicleQuery, source_key: str) -> str:
+        return f"{query.cache_key([source_key])}:source:v1"
+
+    def _source_cooldown_key(self, source_key: str) -> str:
+        return f"source:cooldown:{source_key}:v1"
+
+    def _should_cooldown_source(self, message: str) -> bool:
+        lowered = str(message or "").strip().lower()
+        if not lowered:
+            return False
+        cooldown_markers = (
+            "401",
+            "403",
+            "429",
+            "auth failed",
+            "invalid api key",
+            "invalid key",
+            "unauthorized",
+            "forbidden",
+            "too many requests",
+            "rate limit",
+            "credit card",
+            "billing",
+            "quota",
+            "timed out",
+            "timeout",
+            "connection refused",
+        )
+        return any(marker in lowered for marker in cooldown_markers)
+
+    def _load_cached_source_result(self, metadata: Any, cache_payload: dict[str, Any]) -> SourceRunResult | None:
+        normalized: list[NormalizedListing] = []
+        for item in cache_payload.get("normalized_listings") or []:
+            if not isinstance(item, dict):
+                continue
+            listing = self._listing_from_payload(item)
+            if listing is not None:
+                normalized.append(listing)
+        raw_count = self._payload_to_int(cache_payload.get("raw_count")) or len(normalized)
+        return SourceRunResult(
+            metadata=metadata,
+            raw_listings=[{} for _ in range(max(0, raw_count))],
+            normalized_listings=normalized,
+            errors=list(cache_payload.get("errors") or []),
+            status=str(cache_payload.get("status") or "ok"),
+            message=str(cache_payload.get("message") or f"Reused {len(normalized)} cached listing(s)"),
+        )
+
+    def _run_single_source(self, adapter: Any, query: VehicleQuery, *, force_refresh: bool = False) -> SourceRunResult:
         metadata = adapter.get_source_metadata()
+        if not force_refresh:
+            cooldown = self.repository.get_cache_json(self._source_cooldown_key(metadata.key))
+            if cooldown:
+                message = str(cooldown.get("message") or "Temporarily skipping a recently failing source.")
+                return SourceRunResult(
+                    metadata=metadata,
+                    status="cooldown",
+                    message=message,
+                    errors=[message],
+                )
+            cached_payload = self.repository.get_cache_json(self._source_cache_key(query, metadata.key))
+            if cached_payload:
+                cached_result = self._load_cached_source_result(metadata, cached_payload)
+                if cached_result is not None:
+                    return cached_result
         raw_listings: list[dict[str, Any]] = []
         normalized: list[NormalizedListing] = []
         status = "ok"
@@ -597,6 +914,15 @@ class VehicleCompsEngine:
             status = "error"
             message = str(exc)
             errors.append(str(exc))
+            if self._should_cooldown_source(message):
+                self.repository.set_cache_json(
+                    self._source_cooldown_key(metadata.key),
+                    {
+                        "status": "cooldown",
+                        "message": message,
+                    },
+                    ttl_seconds=self.config.source_failure_cooldown_seconds,
+                )
 
         query_hash = hashlib.sha256(query.cache_key([metadata.key]).encode("utf-8")).hexdigest()
         self.repository.store_source_run(
@@ -607,6 +933,18 @@ class VehicleCompsEngine:
             raw_listings=raw_listings,
             normalized_listings=normalized,
         )
+        if status == "ok":
+            self.repository.set_cache_json(
+                self._source_cache_key(query, metadata.key),
+                {
+                    "status": "ok",
+                    "message": message,
+                    "raw_count": len(raw_listings),
+                    "normalized_listings": [listing.to_dict() for listing in normalized],
+                    "errors": errors,
+                },
+                ttl_seconds=self.config.source_cache_ttl_seconds,
+            )
         return SourceRunResult(
             metadata=metadata,
             raw_listings=raw_listings,
@@ -644,9 +982,18 @@ class VehicleCompsEngine:
         self,
         query: VehicleQuery,
         listings: list[NormalizedListing],
+        limit: int | None = None,
     ) -> list[NormalizedListing]:
+        if limit is not None and limit >= 0:
+            enrichable = listings[:limit]
+            remainder = listings[limit:]
+        else:
+            enrichable = list(listings)
+            remainder = []
+        if not enrichable:
+            return listings
         by_source: dict[str, list[NormalizedListing]] = {}
-        for listing in listings:
+        for listing in enrichable:
             by_source.setdefault(listing.source, []).append(listing)
         adapter_map = {adapter.key: adapter for adapter in self.adapters}
         enriched: list[NormalizedListing] = []
@@ -660,12 +1007,13 @@ class VehicleCompsEngine:
             except Exception as exc:  # noqa: BLE001
                 LOGGER.warning("Enrichment failed for %s: %s", source_key, exc)
                 enriched.extend(source_listings)
-        return enriched
+        return enriched + remainder
 
     def _decode_listing_vins(
         self,
         query: VehicleQuery,
         listings: list[NormalizedListing],
+        limit: int | None = None,
     ) -> list[NormalizedListing]:
         candidates = [
             listing
@@ -681,7 +1029,7 @@ class VehicleCompsEngine:
                 or not listing.fuel_type
                 or bool(query.trim)
             )
-        ][: self.config.max_vin_decodes]
+        ][: max(0, limit if limit is not None else self.config.max_vin_decodes)]
 
         if not candidates:
             return listings
@@ -801,6 +1149,365 @@ class VehicleCompsEngine:
 
         priced.sort(key=lambda listing: (listing.adjusted_price or listing.price or 0.0))
         return priced
+
+    def _gather_car_finder_comps(
+        self,
+        query: VehicleQuery,
+        source_results: list[SourceRunResult],
+    ) -> list[NormalizedListing]:
+        deduped = self._dedupe_listings(
+            [
+                listing
+                for result in source_results
+                for listing in result.normalized_listings
+            ]
+        )
+        rankable: list[NormalizedListing] = []
+        mileage_window_low = None
+        mileage_window_high = None
+        if query.mileage is not None:
+            mileage_window_low = max(0, int(query.mileage) - 5_000)
+            mileage_window_high = int(query.mileage) + 5_000
+        for listing in deduped:
+            if listing.price is None or listing.price < 500:
+                continue
+            if mileage_window_low is not None:
+                if listing.mileage is None:
+                    continue
+                listing_mileage = int(listing.mileage)
+                if listing_mileage < mileage_window_low or listing_mileage > mileage_window_high:
+                    continue
+            score, tier, reasons = score_listing(query, listing)
+            if score <= -500:
+                continue
+            listing.relevance_score = score
+            listing.match_tier = tier
+            listing.metadata["match_reasons"] = reasons
+            rankable.append(listing)
+
+        if not rankable:
+            return []
+
+        mileage_rate = infer_mileage_adjustment_rate(rankable)
+        for listing in rankable:
+            listing.adjusted_price, listing.adjustment_notes = apply_adjustments(query, listing, mileage_rate)
+        return self._rank_car_finder_results(query, rankable)
+
+    def _rank_car_finder_results(
+        self,
+        query: VehicleQuery,
+        listings: list[NormalizedListing],
+    ) -> list[NormalizedListing]:
+        price_values = [float(listing.price) for listing in listings if listing.price is not None]
+        mileage_values = [int(listing.mileage) for listing in listings if listing.mileage is not None]
+        mileage_gaps = [
+            abs(int(listing.mileage or 0) - int(query.mileage or 0))
+            for listing in listings
+            if query.mileage is not None and listing.mileage is not None
+        ]
+        weights = self._car_finder_score_weights(query)
+        for listing in listings:
+            steal_score, components = self._calculate_steal_score(
+                query,
+                listing,
+                weights=weights,
+                price_values=price_values,
+                mileage_values=mileage_values,
+                mileage_gaps=mileage_gaps,
+            )
+            listing.metadata["steal_score"] = round(steal_score, 1)
+            listing.metadata["steal_score_components"] = components
+            listing.metadata["deal_rating"] = self._car_finder_deal_rating(steal_score)
+
+        listings.sort(
+            key=lambda listing: (
+                -float(listing.metadata.get("steal_score") or 0.0),
+                float(listing.price or 10**9),
+                int(listing.mileage) if listing.mileage is not None else 10**9,
+            )
+        )
+        return listings
+
+    def _gather_lowest_example_finder_comps(
+        self,
+        query: VehicleQuery,
+        source_results: list[SourceRunResult],
+    ) -> list[NormalizedListing]:
+        deduped = self._dedupe_listings(
+            [
+                listing
+                for result in source_results
+                for listing in result.normalized_listings
+            ]
+        )
+        filtered: list[NormalizedListing] = []
+        max_mileage = int(query.mileage or 0) if query.mileage is not None else None
+        for listing in deduped:
+            if listing.price is None or listing.price < 500:
+                continue
+            if max_mileage is not None:
+                if listing.mileage is None:
+                    continue
+                if int(listing.mileage) > max_mileage:
+                    continue
+            score, tier, reasons = score_listing(query, listing)
+            if score < 18:
+                continue
+            listing.relevance_score = score
+            listing.match_tier = tier
+            listing.metadata["match_reasons"] = reasons
+            filtered.append(listing)
+
+        if not filtered:
+            return []
+
+        mileage_rate = infer_mileage_adjustment_rate(filtered)
+        for listing in filtered:
+            listing.adjusted_price, listing.adjustment_notes = apply_adjustments(query, listing, mileage_rate)
+
+        overall_market_value = self.calculate_market_value(filtered)
+        for listing in filtered:
+            signal = self._lowest_example_price_signal(listing, filtered, overall_market_value)
+            listing.metadata["price_signal"] = signal["label"]
+            listing.metadata["pricing_explanation"] = signal["explanation"]
+            listing.metadata["market_reference_price"] = signal["market_reference"]
+            listing.metadata["near_mileage_average"] = signal["near_mileage_average"]
+
+        filtered.sort(
+            key=lambda listing: (
+                int(listing.mileage) if listing.mileage is not None else 10**9,
+                float(self._listing_market_price(listing) or 10**9),
+                -float(listing.relevance_score or 0.0),
+            )
+        )
+        return filtered
+
+    def _lowest_example_price_signal(
+        self,
+        listing: NormalizedListing,
+        listings: list[NormalizedListing],
+        market_value: float,
+    ) -> dict[str, str]:
+        listing_price = self._listing_market_price(listing) or 0.0
+        if not listing_price:
+            return {"label": "", "explanation": "", "market_reference": "", "near_mileage_average": ""}
+        target_mileage = int(listing.mileage) if listing.mileage is not None else None
+        near_average = self._average_price_of_closest_mileage(listings, target_mileage, 10) if target_mileage is not None else market_value
+        anchor = near_average or market_value
+        if not anchor:
+            return {"label": "", "explanation": "", "market_reference": "", "near_mileage_average": ""}
+        percent_delta = ((listing_price - anchor) / anchor * 100.0) if anchor else 0.0
+        if percent_delta <= -7.0:
+            label = "Underpriced"
+        elif percent_delta >= 7.0:
+            label = "Overpriced"
+        else:
+            label = "Fairly Priced"
+        explanation = (
+            f"{label} for this mileage band: {money(listing_price)} versus about {money(anchor)} "
+            f"at similar miles, with the broader market around {money(market_value)}."
+        )
+        return {
+            "label": label,
+            "explanation": explanation,
+            "market_reference": money(market_value) if market_value else "",
+            "near_mileage_average": money(anchor) if anchor else "",
+        }
+
+    def _build_lowest_example_market_snapshot(
+        self,
+        listings: list[NormalizedListing],
+        query: VehicleQuery,
+    ) -> dict[str, Any]:
+        if not listings:
+            return {}
+        market_value = self.calculate_market_value(listings)
+        mileages = [int(listing.mileage) for listing in listings if listing.mileage is not None]
+        return {
+            "average_listing_price": money(market_value) if market_value else "",
+            "matching_listings_found": str(len(listings)),
+            "full_price_range": self._build_full_price_range(listings),
+            "mileage_range": (
+                f"{min(mileages):,} mi - {max(mileages):,} mi"
+                if mileages
+                else ""
+            ),
+            "maximum_mileage_filter": f"Up to {int(query.mileage):,} mi" if query.mileage is not None else "No maximum mileage filter",
+        }
+
+    def _lowest_example_message(self, listings: list[NormalizedListing], query: VehicleQuery) -> str:
+        if not listings:
+            return "Lowest Example Finder did not find matching priced listings yet."
+        if query.mileage is not None:
+            return (
+                f"Found {len(listings)} matching listings sorted from lowest to highest mileage, "
+                f"all at or below {int(query.mileage):,} miles."
+            )
+        return f"Found {len(listings)} matching listings sorted from lowest to highest mileage."
+
+    def _lowest_example_assumptions(self, query: VehicleQuery, enabled_source_keys: list[str]) -> list[str]:
+        assumptions = self._assumptions(query, enabled_source_keys)
+        assumptions.append("Lowest Example Finder sorts listings from lowest to highest mileage after deduping the enabled sources.")
+        if query.mileage is not None:
+            assumptions.append(f"Listings above {int(query.mileage):,} miles were excluded by the maximum mileage filter.")
+        return assumptions
+
+    def _calculate_steal_score(
+        self,
+        query: VehicleQuery,
+        listing: NormalizedListing,
+        *,
+        weights: dict[str, float],
+        price_values: list[float],
+        mileage_values: list[int],
+        mileage_gaps: list[int],
+    ) -> tuple[float, dict[str, float]]:
+        trim_score = 72.0
+        if query.trim and listing.trim:
+            trim_score = 45.0 + (trim_similarity(query.trim, listing.trim) * 55.0)
+        elif query.trim and not listing.trim:
+            trim_score = 50.0
+
+        title_score = self._car_finder_title_score(listing.title_status)
+        condition_score = self._car_finder_condition_score(listing.condition)
+        price_score = self._inverse_range_score(float(listing.price or 0.0), price_values, neutral=55.0)
+        mileage_score = self._inverse_range_score(
+            int(listing.mileage) if listing.mileage is not None else None,
+            mileage_values,
+            neutral=48.0,
+        )
+        target_mileage_score = self._inverse_range_score(
+            abs(int(listing.mileage or 0) - int(query.mileage or 0))
+            if query.mileage is not None and listing.mileage is not None
+            else None,
+            mileage_gaps,
+            neutral=55.0,
+        )
+        relevance_score = max(0.0, min(100.0, float(listing.relevance_score or 0.0)))
+        components = {
+            "price": round(price_score, 1),
+            "mileage": round(mileage_score, 1),
+            "closest_mileage": round(target_mileage_score, 1),
+            "trim_match": round(trim_score, 1),
+            "title": round(title_score, 1),
+            "condition": round(condition_score, 1),
+            "relevance": round(relevance_score, 1),
+        }
+        total_weight = sum(weights.values()) or 1.0
+        weighted_score = sum(components[key] * weight for key, weight in weights.items()) / total_weight
+        return weighted_score, components
+
+    def _car_finder_score_weights(self, query: VehicleQuery) -> dict[str, float]:
+        weights = {
+            "price": 38.0,
+            "mileage": 18.0,
+            "trim_match": 16.0,
+            "title": 10.0,
+            "condition": 8.0,
+            "relevance": 18.0,
+        }
+        if query.mileage is not None:
+            weights["closest_mileage"] = 16.0
+        return weights
+
+    def _inverse_range_score(
+        self,
+        value: float | int | None,
+        samples: list[float] | list[int],
+        *,
+        neutral: float = 50.0,
+    ) -> float:
+        if value is None or not samples:
+            return neutral
+        low = min(samples)
+        high = max(samples)
+        if high <= low:
+            return 100.0
+        normalized = (float(value) - float(low)) / (float(high) - float(low))
+        bounded = max(0.0, min(1.0, normalized))
+        return 100.0 - (bounded * 100.0)
+
+    def _car_finder_title_score(self, title_status: str) -> float:
+        normalized = str(title_status or "").strip().lower()
+        if not normalized or normalized == "clean":
+            return 92.0 if normalized else 72.0
+        if normalized in {"rebuilt", "reconstructed"}:
+            return 42.0
+        if normalized in {"salvage", "flood"}:
+            return 18.0
+        if normalized == "lien":
+            return 56.0
+        return 64.0
+
+    def _car_finder_condition_score(self, condition: str) -> float:
+        normalized = str(condition or "").strip().lower()
+        if not normalized:
+            return 68.0
+        if normalized in {"amazing", "excellent", "like new", "great"}:
+            return 94.0
+        if normalized in {"good", "clean"}:
+            return 84.0
+        if normalized in {"fair"}:
+            return 58.0
+        if normalized in {"rough", "poor", "awful"}:
+            return 26.0
+        return 68.0
+
+    def _car_finder_deal_rating(self, steal_score: float) -> str:
+        if steal_score >= 86:
+            return "Elite Deal"
+        if steal_score >= 74:
+            return "Strong Deal"
+        if steal_score >= 62:
+            return "Good Deal"
+        return "Worth Watching"
+
+    def _get_top_deals(self, listings: list[NormalizedListing], limit: int = 10) -> list[NormalizedListing]:
+        return listings[:limit]
+
+    def _build_car_finder_market_snapshot(self, listings: list[NormalizedListing]) -> dict[str, Any]:
+        if not listings:
+            return {}
+        prices = [float(listing.price) for listing in listings if listing.price is not None]
+        mileages = [int(listing.mileage) for listing in listings if listing.mileage is not None]
+        top_score = float(listings[0].metadata.get("steal_score") or 0.0) if listings else 0.0
+        snapshot = {
+            "average_listing_price": money(sum(prices) / len(prices)) if prices else "",
+            "median_listing_price": money(median(prices)) if prices else "",
+            "full_price_range": f"{money(min(prices))} - {money(max(prices))}" if prices else "",
+            "best_deal_score": f"{round(top_score, 1)}/100" if top_score else "",
+            "matching_listings_found": str(len(listings)),
+        }
+        if mileages:
+            snapshot["average_mileage"] = f"{int(round(sum(mileages) / len(mileages))):,} mi"
+        return {key: value for key, value in snapshot.items() if value}
+
+    def _car_finder_message(
+        self,
+        listings: list[NormalizedListing],
+        source_results: list[SourceRunResult],
+    ) -> str:
+        if not listings:
+            return "Car Finder searched the live source basket but did not find active priced matches yet."
+        top = listings[0]
+        top_title = " ".join(
+            part for part in [str(top.year or ""), top.make, top.model, top.trim] if part
+        ).strip() or "the top listing"
+        active_sources = self._active_source_count(source_results)
+        return (
+            f"Car Finder ranked {len(listings)} active listings by steal score across {active_sources} active sources. "
+            f"Best current opportunity: {top_title}."
+        )
+
+    def _car_finder_assumptions(self, query: VehicleQuery, enabled_sources: list[str]) -> list[str]:
+        assumptions = self._assumptions(query, enabled_sources)
+        if query.mileage is None:
+            assumptions.append("No mileage target was provided, so deal ranking leaned more on price, trim fit, title, and overall mileage quality.")
+        else:
+            lower = max(0, int(query.mileage) - 5_000)
+            upper = int(query.mileage) + 5_000
+            assumptions.append(f"Car Finder kept listings inside the ideal mileage window of {lower:,} to {upper:,} miles.")
+        return assumptions
 
     def _build_needs_more_data_response(
         self,
@@ -1542,6 +2249,7 @@ class VehicleCompsEngine:
         payload = {
             **entry.to_payload(),
             "force_refresh": bool(bulk_payload.get("force_refresh")),
+            "bulk_run": True,
             "evaluation_mode": "individual",
             "detailed_vehicle_report": bulk_payload.get("detailed_vehicle_report", ""),
         }
@@ -1598,6 +2306,7 @@ class VehicleCompsEngine:
             "market_value": overall.get("market_value", ""),
             "craigslist_average": result.get("craigslist_average", ""),
             "full_price_range": overall.get("full_price_range", ""),
+            "buy_range": self._format_display_range(overall.get("buy_range")),
             "safe_buy_value": overall.get("safe_buy_value", ""),
             "expected_resale_value": overall.get("expected_resale_value", "") or resale_range.get("low", ""),
             "estimated_profit": overall.get("estimated_profit", "") or result.get("gross_spread_estimate", ""),
@@ -1794,6 +2503,13 @@ class VehicleCompsEngine:
             "image_urls": listing.image_urls,
             "match_tier": listing.match_tier,
             "relevance_score": round(listing.relevance_score, 2),
+            "steal_score": round(float(listing.metadata.get("steal_score") or 0.0), 1) if listing.metadata.get("steal_score") is not None else None,
+            "deal_rating": str(listing.metadata.get("deal_rating") or ""),
+            "steal_score_components": listing.metadata.get("steal_score_components") or {},
+            "price_signal": str(listing.metadata.get("price_signal") or ""),
+            "pricing_explanation": str(listing.metadata.get("pricing_explanation") or ""),
+            "market_reference_price": str(listing.metadata.get("market_reference_price") or ""),
+            "near_mileage_average": str(listing.metadata.get("near_mileage_average") or ""),
             "adjustment_notes": listing.adjustment_notes,
         }
 
@@ -1911,6 +2627,9 @@ class VehicleCompsEngine:
                 anchors.append(self._money_to_float(anchor))
         result: dict[str, Any] = {}
         result["market_value"] = money(market_value)
+        buy_range = self._build_buy_range(listings, target_mileage)
+        if buy_range:
+            result["buy_range"] = buy_range
         result["safe_buy_value"] = money(safe_buy_value)
         result["expected_resale_value"] = money(expected_resale_value)
         result["estimated_profit"] = money(estimated_profit)
@@ -2261,6 +2980,16 @@ class VehicleCompsEngine:
             value = overall_range.get(key)
             if value:
                 rebuilt[key] = money(self._money_to_float(value) * 0.70)
+        buy_range = overall_range.get("buy_range")
+        if isinstance(buy_range, dict):
+            rebuilt["buy_range"] = {
+                **buy_range,
+                "low": money(self._money_to_float(buy_range.get("low", "$0")) * 0.70),
+                "high": money(self._money_to_float(buy_range.get("high", "$0")) * 0.70),
+                "starting_offer": money(self._money_to_float(buy_range.get("starting_offer", "$0")) * 0.70),
+                "final_offer": money(self._money_to_float(buy_range.get("final_offer", "$0")) * 0.70),
+                "anchor_price": money(self._money_to_float(buy_range.get("anchor_price", "$0")) * 0.70),
+            }
         condition_range = overall_range.get("condition_range")
         if isinstance(condition_range, dict):
             rebuilt["condition_range"] = {
@@ -2268,6 +2997,33 @@ class VehicleCompsEngine:
                 "high": money(self._money_to_float(condition_range.get("high", "$0")) * 0.70),
             }
         return rebuilt
+
+    def _build_buy_range(
+        self,
+        listings: list[NormalizedListing],
+        target_mileage: int | None,
+    ) -> dict[str, str]:
+        anchor_price = self._average_price_of_closest_mileage(listings, target_mileage, 10)
+        if not anchor_price:
+            return {}
+        starting_offer = anchor_price * 0.75
+        final_offer = anchor_price * 0.85
+        return {
+            "low": money(starting_offer),
+            "high": money(final_offer),
+            "starting_offer": money(starting_offer),
+            "final_offer": money(final_offer),
+            "anchor_price": money(anchor_price),
+        }
+
+    def _format_display_range(self, value: Any) -> str:
+        if isinstance(value, dict):
+            low = str(value.get("low") or "").strip()
+            high = str(value.get("high") or "").strip()
+            if low and high:
+                return f"{low} - {high}"
+            return low or high
+        return str(value or "")
 
     def _build_full_price_range(self, listings: list[NormalizedListing]) -> str:
         prices = [
@@ -2278,6 +3034,31 @@ class VehicleCompsEngine:
         if not prices:
             return ""
         return f"{money(min(prices))} - {money(max(prices))}"
+
+    def _build_closest_mileage_summary(self, listings: list[NormalizedListing]) -> dict[str, Any]:
+        if not listings:
+            return {}
+        prices = [
+            self._listing_market_price(listing)
+            for listing in listings
+            if self._listing_market_price(listing) is not None
+        ]
+        mileages = [
+            int(listing.mileage)
+            for listing in listings
+            if listing.mileage is not None
+        ]
+        summary: dict[str, Any] = {
+            "comps_used": len(listings),
+        }
+        if prices:
+            summary["average_price"] = money(sum(prices) / len(prices))
+            summary["lowest_price"] = money(min(prices))
+            summary["highest_price"] = money(max(prices))
+        if mileages:
+            summary["lowest_mileage"] = min(mileages)
+            summary["highest_mileage"] = max(mileages)
+        return summary
 
     def _serialize_sample_listings(self, listings: list[NormalizedListing]) -> list[dict[str, str]]:
         return [
@@ -2299,6 +3080,12 @@ class VehicleCompsEngine:
                 "url": listing.url,
                 "image_urls": listing.image_urls,
                 "mileage": listing.mileage,
+                "steal_score": round(float(listing.metadata.get("steal_score") or 0.0), 1) if listing.metadata.get("steal_score") is not None else None,
+                "deal_rating": str(listing.metadata.get("deal_rating") or ""),
+                "price_signal": str(listing.metadata.get("price_signal") or ""),
+                "pricing_explanation": str(listing.metadata.get("pricing_explanation") or ""),
+                "market_reference_price": str(listing.metadata.get("market_reference_price") or ""),
+                "near_mileage_average": str(listing.metadata.get("near_mileage_average") or ""),
             }
             for listing in listings
         ]

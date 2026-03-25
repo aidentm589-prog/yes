@@ -90,7 +90,7 @@
             Paste multiple vehicle listings at once. The app will split them into cars, evaluate each one, and rank the best opportunities first.
           </p>
           <label id="mileage-field" class="full listing-price-field">
-            <span class="input-label-text">Mileage</span>
+            <span id="mileage-label" class="input-label-text">Mileage</span>
             <input
               id="vehicle-mileage"
               name="mileage"
@@ -309,6 +309,15 @@
         </article>
       </section>
 
+      <section class="panel hidden-panel" id="car-finder-top-deals-panel">
+        <div class="results-head">
+          <strong>Top Deals Ranked</strong>
+        </div>
+        <div id="car-finder-top-deals-grid" class="car-finder-top-deals-grid muted">
+          Top-ranked steals will appear here after a Car Finder search.
+        </div>
+      </section>
+
       <section class="panel hidden-panel" id="closest-mileage-panel">
         <div class="results-head">
           <strong>10 Closest-Mileage Comps</strong>
@@ -352,12 +361,24 @@
             <label class="sort-select-wrap">
               <span>Sort</span>
               <select id="comp-sort-select">
+                <option value="best_deals">Best Deals</option>
+                <option value="closest_to_me">Closest To Me</option>
                 <option value="price_low">Price: Low → High</option>
                 <option value="price_high">Price: High → Low</option>
                 <option value="closest_mileage" selected>Closest Mileage</option>
                 <option value="mileage_low">Mileage: Low → High</option>
                 <option value="mileage_high">Mileage: High → Low</option>
               </select>
+            </label>
+            <label id="comp-proximity-zip-wrap" class="sort-select-wrap hidden-panel">
+              <span>ZIP Code</span>
+              <input
+                id="comp-proximity-zip"
+                type="text"
+                maxlength="5"
+                inputmode="numeric"
+                placeholder="Enter ZIP"
+              />
             </label>
             <button id="show-all-comps" type="button" class="ghost-button hidden-panel">
               Show All

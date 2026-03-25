@@ -160,6 +160,7 @@ class AccountService:
         is_admin_access = self.is_admin_user(user)
         tier_label = "ADMIN" if is_admin_access else rule["label"]
         can_use_zippy = True
+        can_use_car_finder_engine = True
         can_use_personal_engine = True
         can_use_individual_model = is_admin_access or int(user["tier"]) >= 2
         can_use_bulk_model = is_admin_access or int(user["tier"]) >= 3
@@ -186,6 +187,7 @@ class AccountService:
             "credits_label": "Unlimited" if user.get("is_unlimited") else str(user.get("credit_balance", 0)),
             "has_bulk_access": bool(user.get("has_bulk_access")),
             "can_use_personal_engine": can_use_personal_engine,
+            "can_use_car_finder_engine": can_use_car_finder_engine,
             "can_use_zippy_model": can_use_zippy,
             "can_use_individual_model": can_use_individual_model,
             "can_use_bulk_model": can_use_bulk_model,
@@ -540,6 +542,28 @@ class AccountService:
             )
         return self._permission_for_mode(user, "beta_v1", payload)
 
+    def can_run_car_finder_evaluation(self, payload: dict[str, Any], user: dict[str, Any] | None = None) -> PermissionDecision:
+        query = parse_vehicle_query(payload)
+        if not (query.year and query.make and query.model):
+            return PermissionDecision(
+                allowed=False,
+                message="Please include at least the year, make, and model before running Car Finder.",
+                status_code=400,
+                user=user,
+            )
+        return PermissionDecision(allowed=True, cost=0, user=user)
+
+    def can_run_lowest_example_finder_evaluation(self, payload: dict[str, Any], user: dict[str, Any] | None = None) -> PermissionDecision:
+        query = parse_vehicle_query(payload)
+        if not (query.year and query.make and query.model):
+            return PermissionDecision(
+                allowed=False,
+                message="Please include at least the year, make, and model before running Lowest Example Finder.",
+                status_code=400,
+                user=user,
+            )
+        return PermissionDecision(allowed=True, cost=0, user=user)
+
     def authorize_carvana_payout_start(self, user_id: int | None) -> PermissionDecision:
         user = self.get_user_by_id(user_id)
         if not user:
@@ -571,6 +595,10 @@ class AccountService:
         return decision
 
     def authorize_evaluation_start(self, user_id: int | None, engine: str, mode: str, payload: dict[str, Any]) -> PermissionDecision:
+        if engine == "car_finder":
+            return self.can_run_car_finder_evaluation(payload, self.get_user_by_id(user_id))
+        if engine == "lowest_example_finder":
+            return self.can_run_lowest_example_finder_evaluation(payload, self.get_user_by_id(user_id))
         user = self.get_user_by_id(user_id)
         if not user:
             return PermissionDecision(

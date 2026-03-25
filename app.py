@@ -95,6 +95,16 @@ def index():
     return render_template("index.html")
 
 
+@app.get("/car-finder")
+def car_finder():
+    return render_template("car_finder.html")
+
+
+@app.get("/lowest-example-finder")
+def lowest_example_finder():
+    return render_template("lowest_example_finder.html")
+
+
 @app.get("/login")
 def login():
     if current_user():
@@ -311,6 +321,16 @@ def vehicle_suggestions():
     except VehicleApiError as exc:
         return jsonify({"ok": False, "message": str(exc), "items": []}), 400
     return jsonify({"ok": True, "items": items})
+
+
+@app.get("/api/zip-lookup")
+def zip_lookup():
+    zip_code = str(request.args.get("zip_code") or "").strip()
+    try:
+        result = service.lookup_zip_coordinates(zip_code)
+    except VehicleApiError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    return jsonify({"ok": True, **result})
 
 
 @app.post("/api/potential-upgrades")

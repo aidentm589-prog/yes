@@ -528,6 +528,7 @@ function renderOverview(front, full) {
   overviewElement.classList.remove("muted");
   overviewElement.innerHTML = `
     ${overviewCard("Safe Buy Value", full.suggested_buy_price || "")}
+    ${overviewCard("Buy Range", overall.buy_range ? `${overall.buy_range.low || ""} - ${overall.buy_range.high || ""}` : "")}
     ${overviewCard("Expected Resale Value", full.expected_resale_range || "")}
     ${overviewCard("Average Price Near This Mileage", full.average_price_near_mileage || "")}
     ${overviewCard("Estimated Profit", estimatedProfit === null ? "" : formatMoney(estimatedProfit), profitClassName(estimatedProfit))}

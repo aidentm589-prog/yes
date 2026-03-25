@@ -99,6 +99,12 @@ class VehicleValueService:
     def authorize_evaluation_start(self, user_id: int | None, engine: str, mode: str, payload: dict[str, Any]) -> PermissionDecision:
         return self.accounts.authorize_evaluation_start(user_id, engine, mode, payload)
 
+    def lookup_zip_coordinates(self, zip_code: str) -> dict[str, Any]:
+        try:
+            return self.engine.lookup_zip_coordinates(zip_code)
+        except Exception as exc:  # noqa: BLE001
+            raise VehicleApiError(str(exc)) from exc
+
     def authorize_carvana_payout_start(self, user_id: int | None) -> PermissionDecision:
         return self.accounts.authorize_carvana_payout_start(user_id)
 
