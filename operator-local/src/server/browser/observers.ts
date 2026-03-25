@@ -1,6 +1,7 @@
 import type { Page } from "playwright";
 
 import type { InteractiveElement, ObservationSnapshot } from "@/types/operator";
+import { buildSuggestedActions, derivePageState, detectBarriers } from "@/server/browser/targeting";
 
 function summarizePageText(text: string) {
   const cleaned = text.replace(/\s+/g, " ").trim();
@@ -37,6 +38,7 @@ function summarizeInteractiveElements(elements: InteractiveElement[]) {
 export async function inspectPage(
   page: Page,
   phase: ObservationSnapshot["phase"] = "checkpoint",
+  goal?: string,
 ): Promise<ObservationSnapshot> {
   await page.waitForLoadState("domcontentloaded").catch(() => null);
 
@@ -140,6 +142,12 @@ export async function inspectPage(
       .filter(Boolean)
       .join(" ");
 
+    const headings = Array.from(document.querySelectorAll("h1, h2, h3"))
+      .filter(isVisible)
+      .map((element) => element.textContent?.trim() ?? "")
+      .filter(Boolean)
+      .slice(0, 8);
+
     const interactive = Array.from(
       document.querySelectorAll("a, button, input, select, textarea, [role='button'], [onclick]"),
     )
@@ -169,19 +177,28 @@ export async function inspectPage(
     return {
       title: document.title,
       visibleText,
+      headings,
       interactiveMap: interactive,
     };
   });
 
-  return {
+  const baseObservation: ObservationSnapshot = {
     url: page.url(),
     title: data.title,
     visibleText: data.visibleText,
     summary: summarizePageText(data.visibleText),
+    headings: data.headings,
     interactiveMap: data.interactiveMap,
     interactiveSummary: summarizeInteractiveElements(data.interactiveMap),
     recentErrors: [],
     startupBlank: page.url() === "about:blank",
     phase,
+  };
+
+  return {
+    ...baseObservation,
+    detectedBarriers: detectBarriers(baseObservation),
+    pageState: derivePageState(baseObservation),
+    suggestedActions: buildSuggestedActions(baseObservation, goal ?? baseObservation.summary),
   };
 }

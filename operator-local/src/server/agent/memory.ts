@@ -14,6 +14,7 @@ export function initialMemory(goal: string, workflowMode: WorkflowMode): RunMemo
     unresolvedQuestions: [],
     extractedEntities: [],
     taskSubgoals: [],
+    pageStatesSeen: [],
     recentActions: [],
   };
 }
@@ -37,6 +38,9 @@ export function updateMemoryWithObservation(memory: RunMemory, observation: Obse
           -6,
         )
       : memory.unresolvedQuestions,
+    pageStatesSeen: observation.pageState
+      ? [...new Set([...(memory.pageStatesSeen ?? []), observation.pageState])].slice(-10)
+      : memory.pageStatesSeen,
   };
 }
 

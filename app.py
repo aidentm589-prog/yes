@@ -25,6 +25,14 @@ def canonical_host() -> str:
     return os.getenv("CANONICAL_HOST", "").strip().lower()
 
 
+def public_base_url() -> str:
+    configured = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
+    if configured:
+        return configured
+    scheme = "https" if request.is_secure else "http"
+    return f"{scheme}://{request.host}".rstrip("/")
+
+
 def current_user() -> dict[str, Any] | None:
     return getattr(g, "current_user", None)
 
@@ -131,6 +139,16 @@ def signup_post():
 @app.get("/logout")
 def logout():
     session.clear()
+    return redirect(url_for("index"))
+
+
+@app.get("/magic-login/<token>")
+def magic_login(token: str):
+    try:
+        user = service.login_with_magic_token(token)
+    except VehicleApiError as exc:
+        return render_template("login.html", error=str(exc)), 400
+    session["user_id"] = user["id"]
     return redirect(url_for("index"))
 
 
@@ -533,6 +551,15 @@ def admin_overview():
 @admin_required
 def admin_users():
     return jsonify({"ok": True, "items": service.list_users()})
+
+
+@app.post("/api/admin/magic-links/mr-obrien")
+@admin_required
+def create_mr_obrien_magic_link():
+    payload = request.get_json(force=True, silent=True) or {}
+    email = str(payload.get("email") or "").strip() or None
+    result = service.create_magic_login_link(public_base_url(), email=email)
+    return jsonify({"ok": True, **result}), 201
 
 
 @app.get("/api/admin/subscriptions")

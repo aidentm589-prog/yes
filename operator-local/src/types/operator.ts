@@ -21,12 +21,28 @@ export type ObservationSnapshot = {
   title: string;
   summary: string;
   visibleText: string;
+  headings?: string[];
   interactiveMap: InteractiveElement[];
   recentErrors: string[];
   screenshotPath?: string;
   startupBlank?: boolean;
   phase?: "pre_action" | "post_action" | "checkpoint";
   interactiveSummary?: string;
+  detectedBarriers?: string[];
+  pageState?:
+    | "startup_blank"
+    | "blocked_by_overlay"
+    | "awaiting_terms_acknowledgement"
+    | "form_step"
+    | "content_page"
+    | "interactive_page";
+  suggestedActions?: Array<{
+    kind: "click" | "type" | "selectOption" | "navigate" | "getPageSummary";
+    selector?: string;
+    url?: string;
+    reason: string;
+    score: number;
+  }>;
 };
 
 export type PolicySnapshot = {
@@ -49,6 +65,7 @@ export type RunMemory = {
   extractedEntities: string[];
   taskSubgoals: string[];
   lastPlannerError?: string;
+  pageStatesSeen?: string[];
   recentActions: Array<{
     kind: BrowserAction["kind"];
     fingerprint: string;

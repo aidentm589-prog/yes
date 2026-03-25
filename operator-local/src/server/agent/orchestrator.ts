@@ -39,10 +39,11 @@ async function captureObservation(
   runId: string,
   label: string,
   phase: "pre_action" | "post_action" | "checkpoint" = "checkpoint",
+  goal?: string,
 ) {
   const { page } = await getBrowserSession(runId);
   const screenshotPath = await captureRunScreenshot(runId, label);
-  const observation = await inspectPage(page, phase);
+  const observation = await inspectPage(page, phase, goal);
   observation.screenshotPath = screenshotPath;
 
   const record = await runRepository.createObservation({
@@ -116,6 +117,35 @@ function canFinishFromObservation(goal: string, observation: Awaited<ReturnType<
     !observation.startupBlank &&
     observation.visibleText.trim().length > 80
   );
+}
+
+function shouldAutoHandleBarrier(
+  observation: Awaited<ReturnType<typeof captureObservation>>["observation"],
+) {
+  const topHint = observation.suggestedActions?.[0];
+  if (!topHint || topHint.kind !== "click" || !topHint.selector) {
+    return null;
+  }
+
+  const matchingElement = observation.interactiveMap.find(
+    (element) => element.selector === topHint.selector,
+  );
+  const label = `${matchingElement?.text ?? ""} ${matchingElement?.ariaLabel ?? ""}`.toLowerCase();
+
+  if (
+    observation.pageState &&
+    ["blocked_by_overlay", "awaiting_terms_acknowledgement"].includes(observation.pageState) &&
+    /(accept|agree|allow|continue|close|dismiss|ok|got it|consent)/i.test(label) &&
+    topHint.score >= 8
+  ) {
+    return {
+      kind: "click" as const,
+      selector: topHint.selector,
+      rationale: `Auto-handle likely page blocker: ${topHint.reason}`,
+    };
+  }
+
+  return null;
 }
 
 function shouldRetryRun(run: Awaited<ReturnType<typeof runRepository.getRun>>, message: string) {
@@ -212,8 +242,58 @@ export async function continueRun(runId: string) {
         runId,
         `step-${run.stepCount + 1}`,
         "pre_action",
+        run.goal,
       );
       memory = updateMemoryWithObservation(memory, observation);
+
+      const barrierAction = shouldAutoHandleBarrier(observation);
+      if (barrierAction) {
+        const actionRecord = await runRepository.createAction({
+          runId,
+          kind: barrierAction.kind,
+          status: "pending",
+          rationale: barrierAction.rationale,
+          inputPayload: barrierAction as never,
+          url: observation.url,
+          observationId: observationRecord.id,
+          screenshotId: screenshotRecord.id,
+          retryCount: run.retryCount,
+        });
+
+        const result = await executeActionForRun(runId, {
+          kind: "click",
+          selector: barrierAction.selector,
+        });
+        const after = await captureObservation(
+          runId,
+          "after-auto-barrier-click",
+          "post_action",
+          run.goal,
+        );
+        memory = updateMemoryWithObservation(memory, after.observation);
+        memory = updateMemoryWithAction(
+          memory,
+          { kind: "click", selector: barrierAction.selector },
+          after.observation.url,
+          barrierAction.rationale,
+        );
+        await runRepository.updateAction(actionRecord.id, {
+          status: "success",
+          outputPayload: result.output as never,
+          completedAt: new Date(),
+          observationId: after.observationRecord.id,
+          screenshotId: after.screenshotRecord.id,
+        });
+        run = await runRepository.updateRun(runId, {
+          status: nextFailureStatus(run.stepCount + 1, run.maxSteps),
+          latestUrl: after.observation.url,
+          latestObservationId: after.observationRecord.id,
+          memory: memory as never,
+          stepCount: { increment: 1 },
+          lastHeartbeatAt: new Date(),
+        });
+        continue;
+      }
 
       let decision;
       try {
@@ -357,7 +437,12 @@ export async function continueRun(runId: string) {
       let actionScreenshotId = screenshotRecord.id;
 
       if (shouldObserveAfterAction(decision.action)) {
-        const after = await captureObservation(runId, `after-${decision.action.kind}`, "post_action");
+        const after = await captureObservation(
+          runId,
+          `after-${decision.action.kind}`,
+          "post_action",
+          run.goal,
+        );
         latestObservationId = after.observationRecord.id;
         latestUrl = after.observation.url;
         actionScreenshotId = after.screenshotRecord.id;

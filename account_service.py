@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import hashlib
+import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -18,6 +20,7 @@ DETAILED_REPORT_COST = 1
 CARVANA_PAYOUT_COST = 1
 FINAL_BUY_ADDON_COST = 1
 FREE_TIER_REFILL_HOURS = 24
+MAGIC_LINK_TTL_DAYS = 7
 
 DEFAULT_TIER_RULES = {
     1: {
@@ -85,11 +88,12 @@ class AccountService:
         self.repository = repository
         self.test_admin_email = os.getenv("TEST_ADMIN_EMAIL", "aiden").strip().lower()
         self.test_admin_password = os.getenv("TEST_ADMIN_PASSWORD", "Aiden123").strip()
-        self.secondary_admin_email = os.getenv("SECONDARY_ADMIN_EMAIL", "mr.o'brien").strip().lower()
-        self.secondary_admin_password = os.getenv("SECONDARY_ADMIN_PASSWORD", "123").strip()
+        self.magic_client_email = self.normalize_email(
+            os.getenv("MR_OBRIEN_MAGIC_EMAIL", "mr.obrien@client.local")
+        )
         self.ensure_subscription_tiers()
         self.ensure_test_admin()
-        self.ensure_secondary_admin()
+        self.ensure_magic_client_account()
 
     def normalize_email(self, email: str) -> str:
         return str(email or "").strip().lower()
@@ -272,6 +276,86 @@ class AccountService:
     def update_user_credits(self, user_id: int, credit_balance: int) -> dict[str, Any] | None:
         updated = self.repository.update_user_account(user_id, credit_balance=max(0, int(credit_balance)))
         return self.get_user_subscription_status(user_id) if updated else None
+
+    def ensure_magic_client_account(self) -> dict[str, Any] | None:
+        existing = self.repository.get_user_by_email(self.magic_client_email)
+        if not existing:
+            user_id = self.repository.create_user_account(
+                first_name="Mr. O'Brien",
+                email=self.magic_client_email,
+                password_hash=generate_password_hash(secrets.token_urlsafe(24)),
+                role="client",
+                tier=3,
+                credit_balance=50_000,
+                has_bulk_access=True,
+                is_unlimited=False,
+                status="active",
+                last_free_credit_at=None,
+                last_login_at=None,
+            )
+            return self.get_user_by_id(user_id)
+
+        self.repository.update_user_account(
+            existing["id"],
+            first_name="Mr. O'Brien",
+            role="client",
+            tier=3,
+            credit_balance=50_000,
+            has_bulk_access=True,
+            is_unlimited=False,
+            status="active",
+        )
+        return self.get_user_by_id(existing["id"])
+
+    def create_magic_login_link(self, base_url: str, email: str | None = None) -> dict[str, Any]:
+        user = self.repository.get_user_by_email(self.normalize_email(email or self.magic_client_email))
+        if not user:
+            user = self.ensure_magic_client_account()
+        if not user:
+            raise ValueError("Unable to provision the magic-link account.")
+
+        self.repository.revoke_active_magic_login_tokens_for_user(user["id"], label="mr-obrien-weekly")
+        raw_token = secrets.token_urlsafe(32)
+        expires_at = (_utc_now() + timedelta(days=MAGIC_LINK_TTL_DAYS)).isoformat()
+        token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+        self.repository.create_magic_login_token(
+            user_id=user["id"],
+            label="mr-obrien-weekly",
+            token_hash=token_hash,
+            expires_at=expires_at,
+        )
+        normalized_base = str(base_url or "").rstrip("/")
+        if not normalized_base:
+            raise ValueError("A valid base URL is required to build the magic link.")
+        return {
+            "email": user["email"],
+            "first_name": user["first_name"],
+            "expires_at": expires_at,
+            "url": f"{normalized_base}/magic-login/{raw_token}",
+        }
+
+    def login_with_magic_token(self, raw_token: str) -> dict[str, Any]:
+        token = self.repository.get_magic_login_token(raw_token)
+        if not token:
+            raise ValueError("This access link is invalid.")
+        if token.get("revoked_at"):
+            raise ValueError("This access link has been revoked.")
+        try:
+            expires_at = datetime.fromisoformat(str(token["expires_at"]))
+        except ValueError as exc:
+            raise ValueError("This access link is no longer valid.") from exc
+        if expires_at <= _utc_now():
+            raise ValueError("This access link has expired.")
+
+        user = self.get_user_by_id(int(token["user_id"]))
+        if not user:
+            raise ValueError("The linked account could not be found.")
+        if str(user.get("status") or "").lower() != "active":
+            raise ValueError("This account is not active.")
+
+        self.repository.touch_magic_login_token(int(token["id"]))
+        self.repository.update_user_account(user["id"], last_login_at=_utc_now_iso())
+        return self.get_user_by_id(user["id"]) or user
 
     def update_user_profile(self, user_id: int, first_name: str) -> dict[str, Any] | None:
         first_name = str(first_name or "").strip()
@@ -555,36 +639,6 @@ class AccountService:
             has_bulk_access=True,
             is_unlimited=True,
             status="active",
-        )
-
-    def ensure_secondary_admin(self) -> None:
-        existing = self.repository.get_user_by_email(self.secondary_admin_email)
-        password_hash = generate_password_hash(self.secondary_admin_password)
-        if not existing:
-            self.repository.create_user_account(
-                first_name="Mr. O'Brien",
-                email=self.secondary_admin_email,
-                password_hash=password_hash,
-                role="test_admin",
-                tier=4,
-                credit_balance=0,
-                has_bulk_access=True,
-                is_unlimited=True,
-                status="active",
-                last_free_credit_at=None,
-                last_login_at=None,
-            )
-            return
-        self.repository.update_user_account(
-            existing["id"],
-            password_hash=password_hash,
-            role="test_admin",
-            tier=4,
-            credit_balance=0,
-            has_bulk_access=True,
-            is_unlimited=True,
-            status="active",
-            first_name="Mr. O'Brien",
         )
 
     def ensure_subscription_tiers(self) -> None:

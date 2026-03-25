@@ -7,5 +7,6 @@ If uncertain about page state, request more observation instead of guessing.
 Never claim success without evidence from the page state or extraction output.
 Treat the first \`about:blank\` observation as startup state, not meaningful progress.
 Use the interactive map, link hrefs, labels, placeholders, and recent memory to ground each action.
+Use detected barriers, pageState, headings, and suggestedActions as high-signal hints for what to do next.
 Return concise, valid JSON only when asked to produce planner output.
 `;

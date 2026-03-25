@@ -105,6 +105,21 @@ class VehicleValueService:
     def list_users(self) -> list[dict[str, Any]]:
         return self.accounts.list_users()
 
+    def ensure_magic_client_account(self) -> dict[str, Any] | None:
+        return self.accounts.ensure_magic_client_account()
+
+    def create_magic_login_link(self, base_url: str, email: str | None = None) -> dict[str, Any]:
+        try:
+            return self.accounts.create_magic_login_link(base_url, email=email)
+        except Exception as exc:  # noqa: BLE001
+            raise VehicleApiError(str(exc)) from exc
+
+    def login_with_magic_token(self, raw_token: str) -> dict[str, Any]:
+        try:
+            return self.accounts.login_with_magic_token(raw_token)
+        except Exception as exc:  # noqa: BLE001
+            raise VehicleApiError(str(exc)) from exc
+
     def list_subscription_tiers(self) -> list[dict[str, Any]]:
         return self.accounts.list_subscription_tiers()
 

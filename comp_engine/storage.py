@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import re
 import sqlite3
@@ -502,9 +503,77 @@ class SQLiteRepository:
         with self._lock, self._connect() as connection:
             connection.execute("DELETE FROM saved_evaluations WHERE user_id = ?", (user_id,))
             connection.execute("DELETE FROM carvana_payout_jobs WHERE user_id = ?", (user_id,))
+            connection.execute("DELETE FROM magic_login_tokens WHERE user_id = ?", (user_id,))
             cursor = connection.execute("DELETE FROM user_accounts WHERE id = ?", (user_id,))
             connection.commit()
             return cursor.rowcount > 0
+
+    def create_magic_login_token(
+        self,
+        *,
+        user_id: int,
+        label: str,
+        token_hash: str,
+        expires_at: str,
+    ) -> int:
+        now = _utc_now_iso()
+        with self._lock, self._connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO magic_login_tokens
+                (user_id, label, token_hash, created_at, expires_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (user_id, label, token_hash, now, expires_at),
+            )
+            connection.commit()
+            return int(cursor.lastrowid)
+
+    def get_magic_login_token(self, raw_token: str) -> dict[str, Any] | None:
+        token_hash = hashlib.sha256(str(raw_token).encode("utf-8")).hexdigest()
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT token.*, user.email AS user_email, user.first_name AS user_first_name
+                FROM magic_login_tokens token
+                JOIN user_accounts user ON user.id = token.user_id
+                WHERE token.token_hash = ?
+                """,
+                (token_hash,),
+            ).fetchone()
+        return self._serialize_magic_login_token_row(row)
+
+    def touch_magic_login_token(self, token_id: int) -> bool:
+        with self._lock, self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE magic_login_tokens SET last_used_at = ? WHERE id = ?",
+                (_utc_now_iso(), token_id),
+            )
+            connection.commit()
+            return cursor.rowcount > 0
+
+    def revoke_magic_login_token(self, token_id: int) -> bool:
+        with self._lock, self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE magic_login_tokens SET revoked_at = ?, last_used_at = ? WHERE id = ?",
+                (_utc_now_iso(), _utc_now_iso(), token_id),
+                )
+            connection.commit()
+            return cursor.rowcount > 0
+
+    def revoke_active_magic_login_tokens_for_user(self, user_id: int, label: str | None = None) -> int:
+        params: list[Any] = [_utc_now_iso(), _utc_now_iso(), user_id]
+        where = "WHERE revoked_at IS NULL AND user_id = ?"
+        if label is not None:
+            where += " AND label = ?"
+            params.append(label)
+        with self._lock, self._connect() as connection:
+            cursor = connection.execute(
+                f"UPDATE magic_login_tokens SET revoked_at = ?, last_used_at = ? {where}",
+                params,
+            )
+            connection.commit()
+            return cursor.rowcount
 
     def list_subscription_tiers(self) -> list[dict[str, Any]]:
         with self._lock, self._connect() as connection:
@@ -797,6 +866,22 @@ class SQLiteRepository:
             "is_unlimited": bool(row["is_unlimited"]),
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
+        }
+
+    def _serialize_magic_login_token_row(self, row: sqlite3.Row | None) -> dict[str, Any] | None:
+        if not row:
+            return None
+        return {
+            "id": int(row["id"]),
+            "user_id": int(row["user_id"]),
+            "label": str(row["label"] or ""),
+            "token_hash": str(row["token_hash"] or ""),
+            "created_at": row["created_at"],
+            "expires_at": row["expires_at"],
+            "last_used_at": row["last_used_at"],
+            "revoked_at": row["revoked_at"],
+            "user_email": str(row["user_email"] or ""),
+            "user_first_name": str(row["user_first_name"] or ""),
         }
 
     def _serialize_carvana_payout_job(self, row: sqlite3.Row | None) -> dict[str, Any] | None:
